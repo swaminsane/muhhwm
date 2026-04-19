@@ -232,6 +232,10 @@ void togglefloating(const Arg *arg);
 void toggletag(const Arg *arg);
 void zoom(const Arg *arg);
 void switchns(const Arg *arg);
+void viewadjacentns(const Arg *arg);
+void tagadjacentns(const Arg *arg);
+void viewadjacent(const Arg *arg);
+void tagadjacent(const Arg *arg);
 
 /* bar.c */
 void bar_init(Monitor *m);

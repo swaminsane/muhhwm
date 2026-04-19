@@ -1659,3 +1659,56 @@ void switchns(const Arg *arg) {
   x11_focus(NULL);
   bar_draw(wm.selmon);
 }
+
+/* ── adjacent navigation ─────────────────────────────────────────────────── */
+
+void viewadjacent(const Arg *arg) {
+  Namespace *ns = SELNS();
+  int cur = __builtin_ctz(ns->tagset[ns->seltags]);
+  int next = (cur + arg->i + NTAGS) % NTAGS;
+  Arg a = {.ui = 1 << next};
+  state_seltag(&a);
+}
+
+void tagadjacent(const Arg *arg) {
+  Namespace *ns = SELNS();
+  if (!ns->sel)
+    return;
+  int cur = __builtin_ctz(ns->sel->tags);
+  int next = (cur + arg->i + NTAGS) % NTAGS;
+  ns->sel->tags = 1 << next;
+  /* follow the window to its new tag */
+  Arg a = {.ui = 1 << next};
+  state_seltag(&a);
+  x11_focus(NULL);
+  x11_arrange(wm.selmon);
+  bar_draw(wm.selmon);
+}
+
+void viewadjacentns(const Arg *arg) {
+  int next = (wm.selmon->ans + arg->i + NNAMESPACES) % NNAMESPACES;
+  Arg a = {.i = next};
+  switchns(&a);
+}
+
+void tagadjacentns(const Arg *arg) {
+  Namespace *ns = SELNS();
+  if (!ns->sel)
+    return;
+  Client *c = ns->sel;
+  int next = (c->ns + arg->i + NNAMESPACES) % NNAMESPACES;
+  if (next == c->ns)
+    return;
+  detach(c);
+  detachstack(c);
+  c->ns = next;
+  c->tags = wm.ns[next].tagset[wm.ns[next].seltags];
+  attach(c);
+  attachstack(c);
+  /* follow window to new namespace */
+  Arg a = {.i = next};
+  switchns(&a);
+  x11_focus(NULL);
+  x11_arrange(wm.selmon);
+  bar_draw(wm.selmon);
+}
