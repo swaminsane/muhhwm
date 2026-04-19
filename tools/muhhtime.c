@@ -7,12 +7,13 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include <ctype.h>
+#include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
-#define LOGPATH "/.local/share/muhhwm/activity.log"
+#define ACTIVITY_DIR "/.local/share/muhhwm/activity"
 #define MAX_ENTRIES 100000
 #define BAR_WIDTH 24
 
@@ -74,19 +75,10 @@ static void kv_sort(KV *arr, int n) {
 
 /* ── parsing ─────────────────────────────────────────────────────────────── */
 
-static int load_log(void) {
-  char path[512];
-  const char *home = getenv("HOME");
-  if (!home)
-    return 0;
-  snprintf(path, sizeof path, "%s%s", home, LOGPATH);
-
+static int load_log_file(const char *path) {
   FILE *f = fopen(path, "r");
-  if (!f) {
-    fprintf(stderr, "muhhtime: no log at %s\n", path);
+  if (!f)
     return 0;
-  }
-
   char line[512];
   while (fgets(line, sizeof line, f) && nentries < MAX_ENTRIES) {
     Entry *e = &entries[nentries];
@@ -99,6 +91,31 @@ static int load_log(void) {
     }
   }
   fclose(f);
+  return nentries;
+}
+
+static int load_log(void) {
+  char dir[512];
+  const char *home = getenv("HOME");
+  if (!home)
+    return 0;
+  snprintf(dir, sizeof dir, "%s%s", home, ACTIVITY_DIR);
+
+  DIR *d = opendir(dir);
+  if (!d) {
+    fprintf(stderr, "muhhtime: no activity dir at %s\n", dir);
+    return 0;
+  }
+
+  struct dirent *ent;
+  char path[600];
+  while ((ent = readdir(d))) {
+    if (strstr(ent->d_name, ".log")) {
+      snprintf(path, sizeof path, "%s/%s", dir, ent->d_name);
+      load_log_file(path);
+    }
+  }
+  closedir(d);
   return nentries;
 }
 
@@ -405,6 +422,24 @@ int main(int argc, char *argv[]) {
     print_kv_section("FIREFOX / SURF", tab_time, n_tab, 50);
     printf("\n");
     print_separator();
+    printf("\n");
+    return 0;
+  } else if (strcmp(argv[1], "recent") == 0) {
+    int count = argc > 2 ? atoi(argv[2]) : 10;
+    printf("\n  RECENT ACTIVITY\n");
+    print_separator();
+    int start = nentries - count;
+    if (start < 0)
+      start = 0;
+    int i;
+    for (i = nentries - 1; i >= start; i--) {
+      Entry *e = &entries[i];
+      struct tm *t = localtime((time_t *)&e->ts);
+      char dur[16], timestr[8];
+      strftime(timestr, sizeof timestr, "%H:%M", t);
+      fmt_duration(e->dur_ms, dur, sizeof dur);
+      printf("  %s  %-12s  %-36s  %s\n", timestr, e->cls, e->title, dur);
+    }
     printf("\n");
     return 0;
   } else {

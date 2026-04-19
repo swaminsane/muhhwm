@@ -1566,6 +1566,9 @@ void spawn(const Arg *arg) {
     sa.sa_flags = 0;
     sa.sa_handler = SIG_DFL;
     sigaction(SIGCHLD, &sa, NULL);
+    const char *home = getenv("HOME");
+    if (home)
+      chdir(home);
     execvp(((char **)arg->v)[0], (char **)arg->v);
     die("muhhwm: execvp '%s' failed:", ((char **)arg->v)[0]);
   }

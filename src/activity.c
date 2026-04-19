@@ -14,8 +14,7 @@
 
 #include "muhh.h"
 
-#define ACTIVITY_DIR "/.local/share/muhhwm"
-#define ACTIVITY_FILE "/.local/share/muhhwm/activity.log"
+#define ACTIVITY_DIR "/.local/share/muhhwm/activity"
 
 /* current focus state */
 static struct {
@@ -39,12 +38,25 @@ static long long ms_since(struct timespec *start) {
 
 static void ensure_dir(void) {
   char dir[512];
+  char parent[512];
   const char *home = getenv("HOME");
   if (!home)
     return;
+
+  /* create parent dir */
+  snprintf(parent, sizeof parent, "%s/.local/share/muhhwm", home);
+  mkdir(parent, 0755);
+
+  /* create activity subdir */
   snprintf(dir, sizeof dir, "%s%s", home, ACTIVITY_DIR);
   mkdir(dir, 0755);
-  snprintf(logpath, sizeof logpath, "%s%s", home, ACTIVITY_FILE);
+
+  /* today's dated log file */
+  time_t now = time(NULL);
+  struct tm *tm = localtime(&now);
+  char date[16];
+  strftime(date, sizeof date, "%Y-%m-%d", tm);
+  snprintf(logpath, sizeof logpath, "%s/%s.log", dir, date);
 }
 
 void activity_init(void) {

@@ -9,12 +9,13 @@
 #include <X11/XF86keysym.h>
 /* ── appearance ─────────────────────────────────────────────────────────── */
 
-static const char *fonts[] = {"monospace:size=10"};
-static const char dmenufont[] = "monospace:size=10";
-static const unsigned int borderpx = 1;
-static const unsigned int snap = 32;
+static const char *fonts[] = {
+    FONT_MAIN, "Noto Color Emoji:pixelsize=11:antialias=true:autohint=true"};
+static const char dmenufont[] = FONT_MAIN;
+static const unsigned int borderpx = BORDER_PX;
+static const unsigned int snap = 22;
 static const int showbar = 1;
-static const int topbar = 1;
+static const int topbar = 0;
 
 static const char *colors[][3] = {
     /*                    fg          bg          border      */
@@ -59,9 +60,9 @@ static const Layout layouts[] = {
 static const Rule rules[] = {
     /* class        instance  title   tags  float  ns  */
     {"Zathura", NULL, NULL, 1 << 1, 0, 0}, /* study/tag2 */
-    {"firefox", NULL, NULL, 1 << 0, 0, 0}, /* study/tag1 */
-    {"mpv", NULL, NULL, 1 << 1, 0, 2},     /* free/tag2  */
-    {"st", NULL, NULL, 1 << 0, 0, 1},      /* code/tag1  */
+    {"firefox", NULL, NULL, 1 << 0, 0, 0},
+    {"mpv", NULL, NULL, 1 << 1, 0, 2}, /* free/tag2  */
+    {"st", NULL, NULL, 1 << 0, 0, 1},  /* code/tag1  */
 };
 
 /* ── commands ───────────────────────────────────────────────────────────── */
@@ -95,7 +96,7 @@ static const Key keys[] = {
     {MODKEY, XK_Right, setmfact, {.f = +0.05}},
     {MODKEY, XK_space, setlayout, {0}},
     {MODKEY | ShiftMask, XK_space, togglefloating, {0}},
-    {MODKEY | ShiftMask, XK_c, killclient, {0}},
+    {MODKEY, XK_c, killclient, {0}},
     {MODKEY | ShiftMask, XK_q, quit, {0}},
     /* extra stuff */
     {MODKEY | ShiftMask, XK_Return, spawn,
@@ -107,6 +108,7 @@ static const Key keys[] = {
      {.v = (const char *[]){"amixer", "set", "Capture", "toggle", NULL}}},
     {MODKEY, XK_n, spawn,
      SHCMD("st -t notes -e nvim $HOME/sync/docs/notes/quicknotes.md")},
+    {MODKEY | ShiftMask, XK_f, spawn, SHCMD("firefox")},
     /* Function keys */
     {0, XF86XK_AudioMute, spawn, SHCMD("amixer set Master toggle")},
     {0, XF86XK_AudioRaiseVolume, spawn, SHCMD("amixer set Master 1%+")},
