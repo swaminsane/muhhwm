@@ -1073,6 +1073,12 @@ static void propertynotify(XEvent *e) {
     }
     if (ev->atom == XA_WM_NAME || ev->atom == wm.netatom[NetWMName]) {
       updatetitle(c);
+      if (ev->atom == XA_WM_NAME || ev->atom == wm.netatom[NetWMName]) {
+        updatetitle(c);
+        activity_update_title(c); /* ← add this */
+        if (c == wm.ns[c->ns].sel)
+          bar_draw(client_mon(c));
+      }
       if (c == wm.ns[c->ns].sel)
         bar_draw(client_mon(c));
     }

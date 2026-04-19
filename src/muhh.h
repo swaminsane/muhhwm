@@ -249,6 +249,7 @@ void rules_apply(Client *c);
 /* activity.c */
 void activity_init(void);
 void activity_focus(Client *c);
+void activity_update_title(Client *c);
 void activity_flush(void);
 
 #endif /* MUHH_H */
