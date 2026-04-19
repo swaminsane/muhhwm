@@ -1114,11 +1114,11 @@ void x11_focus(Client *c) {
     XDeleteProperty(wm.dpy, wm.root, wm.netatom[NetActiveWindow]);
   }
   ns->sel = c;
+  activity_focus(c);
   Monitor *m;
   for (m = wm.mons; m; m = m->next)
     bar_draw(m);
 }
-
 void x11_arrange(Monitor *m) {
   Namespace *ns;
   Tag *ct;

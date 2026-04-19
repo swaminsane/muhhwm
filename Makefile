@@ -24,6 +24,7 @@ SRC = src/muhh.c \
       src/rules.c \
       src/serialize.c \
       src/fs.c \
+	  src/activity.c \
       src/drw.c \
       src/util.c
 

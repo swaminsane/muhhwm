@@ -63,6 +63,7 @@ int main(int argc, char *argv[]) {
     die("muhhwm: cannot open display");
 
   x11_init();
+  activity_init();
   fs_init();
   x11_scan();
   serialize_restore();
@@ -71,6 +72,7 @@ int main(int argc, char *argv[]) {
   x11_run();
 
   /* clean exit - save state before tearing down */
+  activity_flush();
   serialize_save();
   fs_stop();
 
