@@ -1,45 +1,51 @@
-# dwm - dynamic window manager
-# See LICENSE file for copyright and license details.
+# muhhwm - Makefile
 
-include config.mk
+CC      = cc
+VERSION = 0.1
 
-SRC = drw.c dwm.c util.c
-OBJ = ${SRC:.c=.o}
+PREFIX  = /usr/local
+BINDIR  = $(PREFIX)/bin
+MANDIR  = $(PREFIX)/share/man/man1
 
-all: dwm
+INCS = -I. -Isrc \
+       $(shell pkg-config --cflags x11 xft xinerama fuse3)
 
-.c.o:
-	${CC} -c ${CFLAGS} $<
+LIBS = $(shell pkg-config --libs x11 xft xinerama fuse3 fontconfig) \
+       -lpthread
 
-${OBJ}: config.h config.mk
+CFLAGS   = -std=c99 -pedantic -Wall -Wextra -O2 $(INCS) \
+           -DVERSION=\"$(VERSION)\"
+LDFLAGS  = $(LIBS)
 
-config.h:
-	cp config.def.h $@
+SRC = src/muhh.c \
+      src/state.c \
+      src/x11.c \
+      src/bar.c \
+      src/rules.c \
+      src/serialize.c \
+      src/fs.c \
+      src/drw.c \
+      src/util.c
 
-dwm: ${OBJ}
-	${CC} -o $@ ${OBJ} ${LDFLAGS}
+OBJ = $(SRC:.c=.o)
+
+all: muhhwm
+
+muhhwm: $(OBJ)
+	$(CC) -o $@ $(OBJ) $(LDFLAGS)
+
+%.o: %.c src/muhh.h config.h
+	$(CC) -c $(CFLAGS) -o $@ $<
 
 clean:
-	rm -f dwm ${OBJ} dwm-${VERSION}.tar.gz
+	rm -f muhhwm $(OBJ)
 
-dist: clean
-	mkdir -p dwm-${VERSION}
-	cp -R LICENSE Makefile README config.def.h config.mk\
-		dwm.1 drw.h util.h ${SRC} dwm.png transient.c dwm-${VERSION}
-	tar -cf dwm-${VERSION}.tar dwm-${VERSION}
-	gzip dwm-${VERSION}.tar
-	rm -rf dwm-${VERSION}
-
-install: all
-	mkdir -p ${DESTDIR}${PREFIX}/bin
-	cp -f dwm ${DESTDIR}${PREFIX}/bin
-	chmod 755 ${DESTDIR}${PREFIX}/bin/dwm
-	mkdir -p ${DESTDIR}${MANPREFIX}/man1
-	sed "s/VERSION/${VERSION}/g" < dwm.1 > ${DESTDIR}${MANPREFIX}/man1/dwm.1
-	chmod 644 ${DESTDIR}${MANPREFIX}/man1/dwm.1
+install: muhhwm
+	mkdir -p $(BINDIR)
+	cp -f muhhwm $(BINDIR)
+	chmod 755 $(BINDIR)/muhhwm
 
 uninstall:
-	rm -f ${DESTDIR}${PREFIX}/bin/dwm\
-		${DESTDIR}${MANPREFIX}/man1/dwm.1
+	rm -f $(BINDIR)/muhhwm
 
-.PHONY: all clean dist install uninstall
+.PHONY: all clean install uninstall
