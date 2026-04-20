@@ -30,7 +30,7 @@ SRC = src/muhh.c \
 
 OBJ = $(SRC:.c=.o)
 
-all: muhhwm
+all: muhhwm muhhtime
 
 muhhwm: $(OBJ)
 	$(CC) -o $@ $(OBJ) $(LDFLAGS)
@@ -42,7 +42,7 @@ muhhtime: tools/muhhtime.c
 	$(CC) -c $(CFLAGS) -o $@ $<
 
 clean:
-	rm -f muhhwm $(OBJ)
+	rm -f muhhwm muhhtime $(OBJ)
 
 install: muhhwm
 	mkdir -p $(BINDIR)

@@ -183,6 +183,10 @@ typedef struct {
   int running;
   int ans; /* globally active namespace  */
   int lrpad;
+  /* modal layer */
+  //  int modal;        /* 0 = normal, 1 = command mode */
+  //  int modal_prefix; /* current prefix key, 0 = none */
+  //  Window modal_dot; /* green indicator window        */
 } WMState;
 
 extern WMState wm;
@@ -255,5 +259,11 @@ void activity_init(void);
 void activity_focus(Client *c);
 void activity_update_title(Client *c);
 void activity_flush(void);
+
+/* modal.c */
+// void modal_init(void);
+// void modal_enter(void);
+// void modal_exit(void);
+// void modal_keypress(KeySym sym);
 
 #endif /* MUHH_H */
