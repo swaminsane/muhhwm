@@ -1,3 +1,4 @@
+// smol
 /* config.h - muhhwm appearance and behaviour
  * keybindings live in binds.h
  */
