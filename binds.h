@@ -56,26 +56,20 @@ static const Key keys[] = {
     {MODKEY, XK_b, togglebar, {0}},
     {MODKEY | ShiftMask, XK_q, quit, {0}},
 
-    /* ── tag navigation ─────────────────────────────────────────────────── */
-    {MODKEY, XK_h, viewadjacent, {.i = -1}}, /* prev tag        */
-    {MODKEY, XK_l, viewadjacent, {.i = +1}}, /* next tag        */
-    {MODKEY, XK_j, tagadjacent, {.i = -1}},  /* window → prev tag */
-    {MODKEY, XK_k, tagadjacent, {.i = +1}},  /* window → next tag */
+    /* ── navigation ─────────────────────────────────────────────────── */
+    {MODKEY, XK_h, viewadjacent, {.i = -1}},
+    {MODKEY, XK_l, viewadjacent, {.i = +1}},
+    {MODKEY, XK_j, viewadjacentns, {.i = -1}},
+    {MODKEY, XK_k, viewadjacentns, {.i = +1}},
 
-    /* ── namespace navigation ───────────────────────────────────────────── */
-    {MODKEY | ShiftMask, XK_h, viewadjacentns, {.i = -1}}, /* prev namespace */
-    {MODKEY | ShiftMask, XK_l, viewadjacentns, {.i = +1}}, /* next namespace */
-    {MODKEY | ShiftMask,
-     XK_j,
-     tagadjacentns,
-     {.i = -1}}, /* window → prev namespace */
-    {MODKEY | ShiftMask,
-     XK_k,
-     tagadjacentns,
-     {.i = +1}},                         /* window → next namespace */
-    {MODKEY, XK_F1, switchns, {.i = 0}}, /* jump to study   */
-    {MODKEY, XK_F2, switchns, {.i = 1}}, /* jump to code    */
-    {MODKEY, XK_F3, switchns, {.i = 2}}, /* jump to free    */
+    /* ── shifting ───────────────────────────────────────────── */
+    {MODKEY | ShiftMask, XK_h, tagadjacent, {.i = -1}},
+    {MODKEY | ShiftMask, XK_l, tagadjacent, {.i = +1}},
+    {MODKEY | ShiftMask, XK_j, tagadjacentns, {.i = -1}},
+    {MODKEY | ShiftMask, XK_k, tagadjacentns, {.i = +1}},
+    {MODKEY, XK_F1, switchns, {.i = 0}},
+    {MODKEY, XK_F2, switchns, {.i = 1}},
+    {MODKEY, XK_F3, switchns, {.i = 2}},
 
     /* ── apps ──────────────────────────────────────────────────────────── */
     {MODKEY, XK_e, spawn, SHCMD("st -e nvim")},
