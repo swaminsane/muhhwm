@@ -18,7 +18,7 @@ void battery_update(void) {
 
   if (bat_pct <= 10)
     bat_sch = SchCrit;
-  else if (bat_pct <= 20)
+  else if (bat_pct <= 30)
     bat_sch = SchWarn;
   else
     bat_sch = SchNorm;
@@ -27,22 +27,26 @@ void battery_update(void) {
 int battery_draw(int x) {
   int w = sysmods[MOD_BATTERY].width;
   int lp = lrpad / 2;
+
   char pct[8];
   snprintf(pct, sizeof pct, "%d%%", bat_pct);
 
   if (bat_charging) {
-    int dw = (int)drw_fontset_getwidth(drw, "* ");
+    // EVERYTHING GREEN when charging
     drw_setscheme(drw, scheme[SchGreen]);
-    drw_text(drw, x, 0, (unsigned int)(dw + lp), (unsigned int)barh,
-             (unsigned int)lp, "* ", 0);
-    drw_setscheme(drw, scheme[bat_sch]);
-    drw_text(drw, x + dw + lp, 0, (unsigned int)(w - dw - lp),
-             (unsigned int)barh, 0, pct, 0);
+
+    char buf[16];
+    snprintf(buf, sizeof buf, "* %s", pct);
+
+    drw_text(drw, x, 0, (unsigned int)w, (unsigned int)barh, (unsigned int)lp,
+             buf, 0);
   } else {
+    // normal color logic
     drw_setscheme(drw, scheme[bat_sch]);
     drw_text(drw, x, 0, (unsigned int)w, (unsigned int)barh, (unsigned int)lp,
              pct, 0);
   }
+
   return x + w;
 }
 

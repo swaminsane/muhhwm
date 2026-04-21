@@ -7,7 +7,7 @@
 #include <time.h>
 
 Mod sysmods[NSYSMODS] = {
-    [MOD_BATTERY] = {.interval = 30,
+    [MOD_BATTERY] = {.interval = 15,
                      .update = battery_update,
                      .draw = battery_draw,
                      .click = battery_click,
@@ -17,12 +17,12 @@ Mod sysmods[NSYSMODS] = {
                         .draw = brightness_draw,
                         .click = brightness_click,
                         .scroll = brightness_scroll},
-    [MOD_VOLUME] = {.interval = 2,
+    [MOD_VOLUME] = {.interval = 1,
                     .update = volume_update,
                     .draw = volume_draw,
                     .click = volume_click,
                     .scroll = volume_scroll},
-    [MOD_NETWORK] = {.interval = 10,
+    [MOD_NETWORK] = {.interval = 15,
                      .update = network_update,
                      .draw = network_draw,
                      .click = network_click,
@@ -46,7 +46,7 @@ void modules_init(void) {
   sysmods[MOD_VOLUME].width = TEXTW("v 100");
   sysmods[MOD_NETWORK].width = TEXTW("W B");
   sysmods[MOD_STAT].width = TEXTW("θ 100°");
-  sysmods[MOD_TIME].width = TEXTW("23:59");
+  sysmods[MOD_TIME].width = TEXTW("23:59:59");
 
   for (i = 0; i < NSYSMODS; i++) {
     sysmods[i].update();

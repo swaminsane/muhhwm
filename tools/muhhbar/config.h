@@ -2,10 +2,10 @@
 #define CONFIG_H
 
 /* update intervals in seconds */
-static const int iv_battery = 30;
+static const int iv_battery = 15;
 static const int iv_brightness = 2;
-static const int iv_volume = 2;
-static const int iv_network = 10;
+static const int iv_volume = 1;
+static const int iv_network = 15;
 static const int iv_stat = 3;
 static const int iv_time = 1;
 

@@ -4,10 +4,10 @@
 void time_update(void) { /* drawn live, nothing to cache */ }
 
 int time_draw(int x) {
-  char text[8];
+  char text[16];
   time_t now = time(NULL);
   struct tm *tm = localtime(&now);
-  strftime(text, sizeof text, "%H:%M", tm);
+  strftime(text, sizeof text, "%H:%M:%S", tm);
   drw_setscheme(drw, scheme[SchNorm]);
   return drw_text(drw, x, 0, (unsigned int)sysmods[MOD_TIME].width,
                   (unsigned int)barh, (unsigned int)(lrpad / 2), text, 0);
