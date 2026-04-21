@@ -112,16 +112,11 @@ static const Button buttons[] = {
     {ClkTagBar, 0, Button1, state_seltag, {0}}, /* click tag = view it */
     {ClkTagBar, 0, Button3, toggletag, {0}}, /* right click tag = toggle     */
     {ClkWinTitle, 0, Button2, zoom, {0}},    /* middle click title = zoom    */
-    {ClkClientWin,
-     MODKEY,
-     Button1,
-     movemouse,
-     {0}}, /* mod+drag = move window       */
-    {ClkClientWin,
-     MODKEY,
-     Button3,
-     resizemouse,
-     {0}}, /* mod+right drag = resize      */
+    {ClkClientWin, MODKEY, Button1, movemouse, {0}},
+    {ClkClientWin, MODKEY, Button3, resizemouse, {0}},
+    {ClkTagBar, 0, 6, viewadjacent, {.i = -1}},
+    {ClkTagBar, 0, 7, viewadjacent, {.i = +1}},
+    {ClkTagBar, 0, Button4, viewadjacentns, {.i = -1}},
 };
 
 #endif /* BINDS_H */

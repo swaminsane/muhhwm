@@ -44,7 +44,7 @@ muhhtime: tools/muhhtime.c
 clean:
 	rm -f muhhwm muhhtime $(OBJ)
 
-install: muhhwm
+install: muhhwm muhhtime
 	mkdir -p $(BINDIR)
 	cp -f muhhwm $(BINDIR)
 	cp -f muhhtime $(BINDIR)
