@@ -96,6 +96,12 @@ static void draw(void) {
       focusmods[i].x = x;
       x = focusmods[i].draw(x);
     }
+  } else if (curmode == MODE_MEDIA) {
+    int x = 0;
+    for (i = 0; i < NMEDIAMODS; i++) {
+      mediamods[i].x = x;
+      x = mediamods[i].draw(x);
+    }
   }
 
   /* mode blocks */
@@ -165,6 +171,15 @@ static void handle_button(XButtonEvent *ev) {
         return;
       }
     }
+  } else if (curmode == MODE_MEDIA) {
+    for (i = 0; i < NMEDIAMODS; i++) {
+      if (ex >= mediamods[i].x && ex < mediamods[i].x + mediamods[i].width) {
+        if (mediamods[i].click)
+          mediamods[i].click(button);
+        draw();
+        return;
+      }
+    }
   }
 }
 
@@ -190,6 +205,15 @@ static void handle_scroll(XButtonEvent *ev) {
       if (ex >= focusmods[i].x && ex < focusmods[i].x + focusmods[i].width) {
         if (focusmods[i].scroll)
           focusmods[i].scroll(dir);
+        draw();
+        return;
+      }
+    }
+  } else if (curmode == MODE_MEDIA) {
+    for (i = 0; i < NMEDIAMODS; i++) {
+      if (ex >= mediamods[i].x && ex < mediamods[i].x + mediamods[i].width) {
+        if (mediamods[i].scroll)
+          mediamods[i].scroll(dir);
         draw();
         return;
       }
@@ -229,14 +253,12 @@ int main(void) {
 
   modules_init();
   focus_modules_init();
+  media_modules_init();
 
-  /* barw = widest mode's total module width + mode blocks */
-  int sys_w = 0, focus_w = 0;
+  barw = 0;
   for (i = 0; i < NSYSMODS; i++)
-    sys_w += sysmods[i].width;
-  for (i = 0; i < NFOCUSMODS; i++)
-    focus_w += focusmods[i].width;
-  barw = (sys_w > focus_w ? sys_w : focus_w) + BLOCK_TOTAL;
+    barw += sysmods[i].width;
+  barw += BLOCK_TOTAL;
 
   int barx = sw - barw;
   int bary = sh - barh;
@@ -289,6 +311,14 @@ int main(void) {
         if (now - focusmods[i].updated >= (time_t)focusmods[i].interval) {
           focusmods[i].update();
           focusmods[i].updated = now;
+          redraw = 1;
+        }
+      }
+    } else if (curmode == MODE_MEDIA) {
+      for (i = 0; i < NMEDIAMODS; i++) {
+        if (now - mediamods[i].updated >= (time_t)mediamods[i].interval) {
+          mediamods[i].update();
+          mediamods[i].updated = now;
           redraw = 1;
         }
       }

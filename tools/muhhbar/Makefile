@@ -22,6 +22,7 @@ SRC = muhhbar.c \
       modules/activity.c \
       modules/streak.c \
       modules/pomodoro.c \
+      modules/media.c \
       drw.c \
       util.c
 
