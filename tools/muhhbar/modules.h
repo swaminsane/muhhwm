@@ -18,6 +18,12 @@
 #define MOD_TIME 5
 #define NSYSMODS 6
 
+/* focus mode module indices */
+#define MOD_ACTIVITY 0
+#define MOD_STREAK 1
+#define MOD_POMODORO 2
+#define NFOCUSMODS 3
+
 typedef struct {
   int x;
   int width;
@@ -30,8 +36,9 @@ typedef struct {
 } Mod;
 
 extern Mod sysmods[NSYSMODS];
+extern Mod focusmods[NFOCUSMODS];
 
-/* system modules */
+/* system module functions */
 void battery_update(void);
 int battery_draw(int x);
 void battery_click(int b);
@@ -57,6 +64,21 @@ int time_draw(int x);
 void time_click(int b);
 void time_scroll(int d);
 
+/* focus module functions */
+void activity_update(void);
+int activity_draw(int x);
+void activity_click(int b);
+void activity_scroll(int d);
+void streak_update(void);
+int streak_draw(int x);
+void streak_click(int b);
+void streak_scroll(int d);
+void pomodoro_update(void);
+int pomodoro_draw(int x);
+void pomodoro_click(int b);
+void pomodoro_scroll(int d);
+
 void modules_init(void);
+void focus_modules_init(void);
 
 #endif /* MODULES_H */

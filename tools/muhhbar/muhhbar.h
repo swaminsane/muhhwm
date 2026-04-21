@@ -1,10 +1,8 @@
 #ifndef MUHHBAR_H
 #define MUHHBAR_H
 
-#include "../../colors.h"
 #include "drw.h"
 
-/* font — resolved at build time via -I flag to reach fonts.h */
 #ifndef FONT_MAIN
 #define FONT_MAIN "monospace:size=10"
 #endif
@@ -18,6 +16,9 @@ enum {
   SchCrit,
   SchGreen,
   SchGrey,
+  SchNsStudy, /* blue  — study namespace */
+  SchNsCode,  /* green — code namespace  */
+  SchNsFree,  /* magenta — free namespace */
   SchLast
 };
 
@@ -30,6 +31,11 @@ extern Clr **scheme;
 extern int lrpad;
 extern int barh;
 extern int barw;
+
+/* detail view state — set by activity module, read by draw() */
+extern int detail_view;
+extern time_t detail_time;
+#define DETAIL_TIMEOUT 10
 
 #define TEXTW(t) ((int)drw_fontset_getwidth(drw, (t)) + lrpad)
 

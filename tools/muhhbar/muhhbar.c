@@ -13,23 +13,20 @@
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 
-/* muhhbar.h brings in drw.h, colors.h, scheme enum, FONT_MAIN */
 #include "config.h"
 #include "modules.h"
 #include "muhhbar.h"
 #include "util.h"
 
-/* fonts and colors — must come after muhhbar.h (scheme enum + COL_ macros) */
 static const char *fonts[] = {
-    FONT_MAIN, "Noto Color Emoji:pixelsize=11:antialias=true:autohint=true"};
+    "DejaVu Sans Mono:size=10",
+};
 static const char *colors[][2] = {
-    [SchNorm] = {COL_FG, COL_BG},
-    [SchAccent] = {COL_BG, COL_ACCENT},
-    [SchBlock] = {COL_BG, COL_BRIGHT_BLACK},
-    [SchWarn] = {COL_YELLOW, COL_BG},
-    [SchCrit] = {COL_RED, COL_BG},
-    [SchGreen] = {COL_GREEN, COL_BG},
-    [SchGrey] = {COL_BRIGHT_BLACK, COL_BG},
+    [SchNorm] = {"#dcd7ba", "#1f1f28"},   [SchAccent] = {"#1f1f28", "#7e9cd8"},
+    [SchBlock] = {"#1f1f28", "#727169"},  [SchWarn] = {"#c0a36e", "#1f1f28"},
+    [SchCrit] = {"#c34043", "#1f1f28"},   [SchGreen] = {"#76946a", "#1f1f28"},
+    [SchGrey] = {"#727169", "#1f1f28"},   [SchNsStudy] = {"#7e9cd8", "#1f1f28"},
+    [SchNsCode] = {"#76946a", "#1f1f28"}, [SchNsFree] = {"#957fb8", "#1f1f28"},
 };
 
 /* ── shared globals ──────────────────────────────────────────────────── */
@@ -41,6 +38,8 @@ Clr **scheme;
 int lrpad;
 int barh;
 int barw;
+int detail_view = 0;
+time_t detail_time = 0;
 
 /* ── private ─────────────────────────────────────────────────────────── */
 static Window barwin;
@@ -70,14 +69,32 @@ static void sigchld(int s) {
 static void draw(void) {
   int i;
 
+  /* check detail view timeout */
+  if (detail_view && time(NULL) - detail_time >= DETAIL_TIMEOUT)
+    detail_view = 0;
+
   drw_setscheme(drw, scheme[SchNorm]);
   drw_rect(drw, 0, 0, (unsigned int)barw, (unsigned int)barh, 1, 1);
 
+  /* detail view: activity takes full bar, no mode blocks */
+  if (detail_view) {
+    focusmods[MOD_ACTIVITY].draw(0);
+    drw_map(drw, barwin, 0, 0, (unsigned int)barw, (unsigned int)barh);
+    return;
+  }
+
+  /* normal mode drawing */
   if (curmode == MODE_SYSTEM) {
     int x = 0;
     for (i = 0; i < NSYSMODS; i++) {
       sysmods[i].x = x;
       x = sysmods[i].draw(x);
+    }
+  } else if (curmode == MODE_FOCUS) {
+    int x = 0;
+    for (i = 0; i < NFOCUSMODS; i++) {
+      focusmods[i].x = x;
+      x = focusmods[i].draw(x);
     }
   }
 
@@ -98,12 +115,33 @@ static void handle_button(XButtonEvent *ev) {
   int button = (int)ev->button;
   int i;
 
+  /* detail view: any click collapses it */
+  if (detail_view) {
+    detail_view = 0;
+    draw();
+    return;
+  }
+
   /* mode blocks */
   int bx = barw - BPAD - (NMODES * (BSQW + BSQGAP) - BSQGAP);
   for (i = 0; i < NMODES; i++) {
     int bs = bx + i * (BSQW + BSQGAP);
     if (ex >= bs && ex < bs + BSQW) {
       curmode = i;
+      int new_w = 0, j;
+      if (curmode == MODE_SYSTEM)
+        for (j = 0; j < NSYSMODS; j++)
+          new_w += sysmods[j].width;
+      else if (curmode == MODE_FOCUS)
+        for (j = 0; j < NFOCUSMODS; j++)
+          new_w += focusmods[j].width;
+      new_w += BLOCK_TOTAL;
+      barw = new_w;
+      drw_resize(drw, (unsigned int)barw, (unsigned int)barh);
+      XMoveResizeWindow(dpy, barwin, sw - barw, sh - barh, (unsigned int)barw,
+                        (unsigned int)barh);
+      XClearWindow(dpy, barwin);
+      XFlush(dpy);
       draw();
       return;
     }
@@ -118,6 +156,15 @@ static void handle_button(XButtonEvent *ev) {
         return;
       }
     }
+  } else if (curmode == MODE_FOCUS) {
+    for (i = 0; i < NFOCUSMODS; i++) {
+      if (ex >= focusmods[i].x && ex < focusmods[i].x + focusmods[i].width) {
+        if (focusmods[i].click)
+          focusmods[i].click(button);
+        draw();
+        return;
+      }
+    }
   }
 }
 
@@ -126,11 +173,23 @@ static void handle_scroll(XButtonEvent *ev) {
   int dir = (ev->button == Button4) ? +1 : -1;
   int i;
 
+  if (detail_view)
+    return;
+
   if (curmode == MODE_SYSTEM) {
     for (i = 0; i < NSYSMODS; i++) {
       if (ex >= sysmods[i].x && ex < sysmods[i].x + sysmods[i].width) {
         if (sysmods[i].scroll)
           sysmods[i].scroll(dir);
+        draw();
+        return;
+      }
+    }
+  } else if (curmode == MODE_FOCUS) {
+    for (i = 0; i < NFOCUSMODS; i++) {
+      if (ex >= focusmods[i].x && ex < focusmods[i].x + focusmods[i].width) {
+        if (focusmods[i].scroll)
+          focusmods[i].scroll(dir);
         draw();
         return;
       }
@@ -169,10 +228,15 @@ int main(void) {
     scheme[i] = drw_scm_create(drw, colors[i], 2);
 
   modules_init();
+  focus_modules_init();
 
-  barw = BLOCK_TOTAL;
+  /* barw = widest mode's total module width + mode blocks */
+  int sys_w = 0, focus_w = 0;
   for (i = 0; i < NSYSMODS; i++)
-    barw += sysmods[i].width;
+    sys_w += sysmods[i].width;
+  for (i = 0; i < NFOCUSMODS; i++)
+    focus_w += focusmods[i].width;
+  barw = (sys_w > focus_w ? sys_w : focus_w) + BLOCK_TOTAL;
 
   int barx = sw - barw;
   int bary = sh - barh;
@@ -209,11 +273,22 @@ int main(void) {
     time_t now = time(NULL);
     int redraw = 0;
 
-    if (curmode == MODE_SYSTEM) {
+    if (detail_view) {
+      /* in detail view just redraw on tick to update timeout */
+      redraw = 1;
+    } else if (curmode == MODE_SYSTEM) {
       for (i = 0; i < NSYSMODS; i++) {
         if (now - sysmods[i].updated >= (time_t)sysmods[i].interval) {
           sysmods[i].update();
           sysmods[i].updated = now;
+          redraw = 1;
+        }
+      }
+    } else if (curmode == MODE_FOCUS) {
+      for (i = 0; i < NFOCUSMODS; i++) {
+        if (now - focusmods[i].updated >= (time_t)focusmods[i].interval) {
+          focusmods[i].update();
+          focusmods[i].updated = now;
           redraw = 1;
         }
       }

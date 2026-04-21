@@ -19,6 +19,9 @@ SRC = muhhbar.c \
       modules/network.c \
       modules/stat.c \
       modules/time.c \
+      modules/activity.c \
+      modules/streak.c \
+      modules/pomodoro.c \
       drw.c \
       util.c
 

@@ -1,4 +1,4 @@
-/* modules.c - module table and init only */
+/* modules.c - module tables and init */
 #define _POSIX_C_SOURCE 200809L
 
 #include "modules.h"
@@ -7,7 +7,7 @@
 #include <time.h>
 
 Mod sysmods[NSYSMODS] = {
-    [MOD_BATTERY] = {.interval = 15,
+    [MOD_BATTERY] = {.interval = 30,
                      .update = battery_update,
                      .draw = battery_draw,
                      .click = battery_click,
@@ -17,12 +17,12 @@ Mod sysmods[NSYSMODS] = {
                         .draw = brightness_draw,
                         .click = brightness_click,
                         .scroll = brightness_scroll},
-    [MOD_VOLUME] = {.interval = 1,
+    [MOD_VOLUME] = {.interval = 2,
                     .update = volume_update,
                     .draw = volume_draw,
                     .click = volume_click,
                     .scroll = volume_scroll},
-    [MOD_NETWORK] = {.interval = 15,
+    [MOD_NETWORK] = {.interval = 10,
                      .update = network_update,
                      .draw = network_draw,
                      .click = network_click,
@@ -39,6 +39,24 @@ Mod sysmods[NSYSMODS] = {
                   .scroll = time_scroll},
 };
 
+Mod focusmods[NFOCUSMODS] = {
+    [MOD_ACTIVITY] = {.interval = 30,
+                      .update = activity_update,
+                      .draw = activity_draw,
+                      .click = activity_click,
+                      .scroll = activity_scroll},
+    [MOD_STREAK] = {.interval = 1,
+                    .update = streak_update,
+                    .draw = streak_draw,
+                    .click = streak_click,
+                    .scroll = streak_scroll},
+    [MOD_POMODORO] = {.interval = 1,
+                      .update = pomodoro_update,
+                      .draw = pomodoro_draw,
+                      .click = pomodoro_click,
+                      .scroll = pomodoro_scroll},
+};
+
 void modules_init(void) {
   int i;
   sysmods[MOD_BATTERY].width = TEXTW("* 100%");
@@ -51,5 +69,17 @@ void modules_init(void) {
   for (i = 0; i < NSYSMODS; i++) {
     sysmods[i].update();
     sysmods[i].updated = time(NULL);
+  }
+}
+
+void focus_modules_init(void) {
+  int i;
+  focusmods[MOD_ACTIVITY].width = TEXTW("Σ 99h59m");
+  focusmods[MOD_STREAK].width = TEXTW("→ 999m");
+  focusmods[MOD_POMODORO].width = TEXTW("Pomodoro 99m59s");
+
+  for (i = 0; i < NFOCUSMODS; i++) {
+    focusmods[i].update();
+    focusmods[i].updated = time(NULL);
   }
 }
