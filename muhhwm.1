@@ -1,0 +1,194 @@
+
+.TH MUHHWM 1 muhhwm\-VERSION
+.SH NAME
+muhhwm \- a tiling window manager for X
+.SH SYNOPSIS
+.B muhhwm
+.SH DESCRIPTION
+muhhwm is a tiling window manager for X11. Windows are organised into
+tags and namespaces. Each namespace has its own set of six tags, and
+only one namespace is active at a time. This lets you keep separate
+contexts (such as study, code, and free time) without them interfering
+with each other.
+.P
+Three layouts are available: tiled, monocle, and floating. In tiled
+mode the screen is split into a master area on the left and a stack on
+the right. The proportion of the screen given to the master area is
+configurable. Monocle shows one window at a time maximised to the full
+bar-adjusted screen area. Floating imposes no layout and windows can
+be moved and resized freely.
+.P
+The bar appears at the top of the screen and shows the current
+namespace, the tag strip, and the title of the focused window.
+muhhbar is a separate status bar process and is not managed by
+muhhwm directly.
+.SH NAMESPACES
+muhhwm has three namespaces: study, code, and free. Each namespace
+maintains its own tag state independently. Switching namespaces
+preserves the tag selection in the namespace you are leaving and
+restores it when you return.
+.SH TAGS
+Each namespace has six tags numbered 1 through 6. A window can belong
+to one or more tags. Only windows that belong to the currently selected
+tag or tags are shown on screen.
+.SH CONFIGURATION
+muhhwm is configured by editing
+.B config.h
+and recompiling. There is no runtime configuration file.
+.SH KEYBINDINGS
+The modifier key is Super (the Windows key), written as Mod below.
+.SS Windows
+.TP
+.B Mod+Return
+Open a new terminal (tabbed st).
+.TP
+.B Mod+Shift+Return
+Open a new terminal in the same working directory as the focused window.
+.TP
+.B Mod+c
+Close the focused window.
+.TP
+.B Mod+space
+Cycle to the next layout.
+.TP
+.B Mod+Shift+space
+Toggle floating for the focused window.
+.TP
+.B Mod+b
+Toggle the bar.
+.TP
+.B Mod+Shift+q
+Quit muhhwm.
+.SS Tag navigation
+.TP
+.B Mod+h
+Move to the previous tag in the current namespace.
+.TP
+.B Mod+l
+Move to the next tag in the current namespace.
+.TP
+.B Mod+j
+Move to the previous namespace, keeping position within it.
+.TP
+.B Mod+k
+Move to the next namespace, keeping position within it.
+.TP
+.B Mod+1\-6
+Jump directly to tag N in the current namespace.
+.SS Moving windows between tags
+.TP
+.B Mod+Shift+h
+Send the focused window to the previous tag.
+.TP
+.B Mod+Shift+l
+Send the focused window to the next tag.
+.TP
+.B Mod+Shift+j
+Send the focused window to the previous namespace.
+.TP
+.B Mod+Shift+k
+Send the focused window to the next namespace.
+.TP
+.B Mod+Shift+1\-6
+Send the focused window to tag N.
+.SS Namespace shortcuts
+.TP
+.B Mod+F1
+Switch to the study namespace.
+.TP
+.B Mod+F2
+Switch to the code namespace.
+.TP
+.B Mod+F3
+Switch to the free namespace.
+.SS Applications
+.TP
+.B Mod+e
+Open neovim in a terminal.
+.TP
+.B Mod+n
+Open quick notes in neovim.
+.TP
+.B Mod+Shift+f
+Open Firefox.
+.SS Menus (Alt key)
+.TP
+.B Alt+space
+dmenu application launcher.
+.TP
+.B Alt+b
+Browser/URL menu.
+.TP
+.B Alt+f
+File manager (lf).
+.TP
+.B Alt+m
+Music menu.
+.TP
+.B Alt+p
+Pomodoro menu.
+.TP
+.B Alt+Escape
+Power menu.
+.TP
+.B Alt+F10
+Network/connection menu.
+.TP
+.B Alt+Super
+All-in-one launcher menu.
+.TP
+.B Alt+F12
+Toggle external display.
+.SS Media keys
+.TP
+.B XF86AudioMute
+Toggle master audio mute.
+.TP
+.B XF86AudioRaiseVolume / XF86AudioLowerVolume
+Raise or lower master volume by 1%.
+.TP
+.B XF86MonBrightnessUp / XF86MonBrightnessDown
+Raise or lower screen brightness by 1%.
+.TP
+.B F4
+Toggle microphone capture.
+.TP
+.B Print
+Screenshot menu.
+.SH MOUSE
+.TP
+.B Mod+Button1
+Move the window under the cursor.
+.TP
+.B Mod+Button3
+Resize the window under the cursor.
+.TP
+.B Button1 on tag
+View that tag.
+.TP
+.B Button3 on tag
+Toggle that tag into the current view.
+.TP
+.B Button2 on window title
+Zoom (promote) the window to the master area.
+.TP
+.B Scroll on tag bar (left/right)
+Navigate to adjacent tags.
+.TP
+.B Scroll up on tag bar
+Navigate to the previous namespace.
+.SH WINDOW RULES
+Windows can be assigned to a specific tag and namespace automatically
+based on their class, instance, or title. Rules are defined in
+.B config.h
+before compilation.
+.SH SEE ALSO
+.BR st (1),
+.BR dmenu (1),
+.BR tabbed (1),
+.BR muhhbar (1)
+.SH BUGS
+Report bugs at the project repository.
+.SH AUTHORS @Swami Vivekanand
+muhhwm was written by its author and is based in part on the dwm source
+from suckless.org.

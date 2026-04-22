@@ -1,3 +1,4 @@
-*.o
+**/*.o
 muhhwm
 muhhtime
+tools/muhhbar/muhhbar

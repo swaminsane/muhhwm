@@ -1,4 +1,4 @@
-# dwm version
+# muhhwm version
 VERSION = 6.8
 
 # Customize below to fit your system
