@@ -36,6 +36,7 @@ extern int barw;
 extern int detail_view;
 extern time_t detail_time;
 #define DETAIL_TIMEOUT 10
+#define POWER_TIMEOUT 10
 
 #define TEXTW(t) ((int)drw_fontset_getwidth(drw, (t)) + lrpad)
 

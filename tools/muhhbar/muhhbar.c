@@ -13,6 +13,7 @@
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 
+#include "../../colors.h"
 #include "config.h"
 #include "modules.h"
 #include "muhhbar.h"
@@ -22,11 +23,16 @@ static const char *fonts[] = {
     "DejaVu Sans Mono:size=10",
 };
 static const char *colors[][2] = {
-    [SchNorm] = {"#dcd7ba", "#1f1f28"},   [SchAccent] = {"#1f1f28", "#7e9cd8"},
-    [SchBlock] = {"#1f1f28", "#727169"},  [SchWarn] = {"#c0a36e", "#1f1f28"},
-    [SchCrit] = {"#c34043", "#1f1f28"},   [SchGreen] = {"#76946a", "#1f1f28"},
-    [SchGrey] = {"#727169", "#1f1f28"},   [SchNsStudy] = {"#7e9cd8", "#1f1f28"},
-    [SchNsCode] = {"#76946a", "#1f1f28"}, [SchNsFree] = {"#957fb8", "#1f1f28"},
+    [SchNorm] = {COL_FG, COL_BG},
+    [SchAccent] = {COL_BG, COL_ACCENT},
+    [SchBlock] = {COL_BG, COL_BRIGHT_BLACK},
+    [SchWarn] = {COL_YELLOW, COL_BG},
+    [SchCrit] = {COL_RED, COL_BG},
+    [SchGreen] = {COL_GREEN, COL_BG},
+    [SchGrey] = {COL_BRIGHT_BLACK, COL_BG},
+    [SchNsStudy] = {COL_BLUE, COL_BG},
+    [SchNsCode] = {COL_GREEN, COL_BG},
+    [SchNsFree] = {COL_MAGENTA, COL_BG},
 };
 
 /* ── shared globals ──────────────────────────────────────────────────── */
@@ -46,6 +52,8 @@ static Window barwin;
 static int sw, sh;
 static int curmode = MODE_SYSTEM;
 static int running = 1;
+static time_t last_interaction = 0;
+static int cursor_on_bar = 0;
 
 /* ── spawn ───────────────────────────────────────────────────────────── */
 void spawn(const char **cmd) {
@@ -83,6 +91,16 @@ static void draw(void) {
     return;
   }
 
+  if (power_view) {
+    if (time(NULL) - power_time >= POWER_TIMEOUT)
+      power_view = 0;
+    else {
+      power_draw_menu();
+      drw_map(drw, barwin, 0, 0, (unsigned int)barw, (unsigned int)barh);
+      return;
+    }
+  }
+
   /* normal mode drawing */
   if (curmode == MODE_SYSTEM) {
     int x = 0;
@@ -117,6 +135,7 @@ static void draw(void) {
 
 /* ── input ───────────────────────────────────────────────────────────── */
 static void handle_button(XButtonEvent *ev) {
+  last_interaction = time(NULL);
   int ex = ev->x;
   int button = (int)ev->button;
   int i;
@@ -124,6 +143,12 @@ static void handle_button(XButtonEvent *ev) {
   /* detail view: any click collapses it */
   if (detail_view) {
     detail_view = 0;
+    draw();
+    return;
+  }
+
+  if (power_view) {
+    power_menu_click(ex);
     draw();
     return;
   }
@@ -141,6 +166,9 @@ static void handle_button(XButtonEvent *ev) {
       else if (curmode == MODE_FOCUS)
         for (j = 0; j < NFOCUSMODS; j++)
           new_w += focusmods[j].width;
+      else if (curmode == MODE_MEDIA)
+        for (j = 0; j < NMEDIAMODS; j++)
+          new_w += mediamods[j].width;
       new_w += BLOCK_TOTAL;
       barw = new_w;
       drw_resize(drw, (unsigned int)barw, (unsigned int)barh);
@@ -184,6 +212,7 @@ static void handle_button(XButtonEvent *ev) {
 }
 
 static void handle_scroll(XButtonEvent *ev) {
+  last_interaction = time(NULL);
   int ex = ev->x;
   int dir = (ev->button == Button4) ? +1 : -1;
   int i;
@@ -268,7 +297,8 @@ int main(void) {
   XSetWindowAttributes wa;
   wa.override_redirect = True;
   wa.background_pixel = scheme[SchNorm][ColBg].pixel;
-  wa.event_mask = ButtonPressMask | ExposureMask;
+  wa.event_mask =
+      ButtonPressMask | ExposureMask | EnterWindowMask | LeaveWindowMask;
 
   barwin = XCreateWindow(dpy, root, barx, bary, (unsigned int)barw,
                          (unsigned int)barh, 0, DefaultDepth(dpy, screen),
@@ -294,6 +324,24 @@ int main(void) {
 
     time_t now = time(NULL);
     int redraw = 0;
+
+    if (curmode != MODE_SYSTEM && !cursor_on_bar && last_interaction > 0 &&
+        time(NULL) - last_interaction >= 10) {
+      power_view = 0;
+      curmode = MODE_SYSTEM;
+      last_interaction = 0;
+      barw = 0;
+      int j;
+      for (j = 0; j < NSYSMODS; j++)
+        barw += sysmods[j].width;
+      barw += BLOCK_TOTAL;
+      drw_resize(drw, (unsigned int)barw, (unsigned int)barh);
+      XMoveResizeWindow(dpy, barwin, sw - barw, sh - barh, (unsigned int)barw,
+                        (unsigned int)barh);
+      XClearWindow(dpy, barwin);
+      XFlush(dpy);
+      redraw = 1;
+    }
 
     if (detail_view) {
       /* in detail view just redraw on tick to update timeout */
@@ -330,6 +378,14 @@ int main(void) {
       switch (ev.type) {
       case Expose:
         redraw = 1;
+        break;
+      case EnterNotify:
+        cursor_on_bar = 1;
+        last_interaction = time(NULL);
+        break;
+      case LeaveNotify:
+        cursor_on_bar = 0;
+        last_interaction = time(NULL);
         break;
       case ButtonPress:
         if (ev.xbutton.button == Button4 || ev.xbutton.button == Button5)

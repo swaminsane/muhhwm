@@ -8,24 +8,23 @@
 #define MODE_MEDIA 2
 #define NMODES 3
 
-/* system module indices */
 #define MOD_BATTERY 0
 #define MOD_BRIGHTNESS 1
 #define MOD_VOLUME 2
 #define MOD_NETWORK 3
 #define MOD_STAT 4
 #define MOD_TIME 5
-#define NSYSMODS 6
+#define MOD_POWER 6
+#define NSYSMODS 7
 
-/* focus module indices */
 #define MOD_ACTIVITY 0
 #define MOD_STREAK 1
 #define MOD_POMODORO 2
 #define NFOCUSMODS 3
 
-/* media module indices */
 #define MOD_MEDIA 0
-#define NMEDIAMODS 1
+#define MOD_TV 1
+#define NMEDIAMODS 2
 
 typedef struct {
   int x;
@@ -42,7 +41,6 @@ extern Mod sysmods[NSYSMODS];
 extern Mod focusmods[NFOCUSMODS];
 extern Mod mediamods[NMEDIAMODS];
 
-/* system */
 void battery_update(void);
 int battery_draw(int x);
 void battery_click(int b);
@@ -67,8 +65,15 @@ void time_update(void);
 int time_draw(int x);
 void time_click(int b);
 void time_scroll(int d);
+void power_update(void);
+int power_draw(int x);
+void power_click(int b);
+void power_scroll(int d);
+void power_draw_menu(void);
+void power_menu_click(int ex);
+extern int power_view;
+extern time_t power_time;
 
-/* focus */
 void activity_update(void);
 int activity_draw(int x);
 void activity_click(int b);
@@ -82,11 +87,14 @@ int pomodoro_draw(int x);
 void pomodoro_click(int b);
 void pomodoro_scroll(int d);
 
-/* media */
 void media_update(void);
 int media_draw(int x);
 void media_click(int b);
 void media_scroll(int d);
+void tv_update(void);
+int tv_draw(int x);
+void tv_click(int b);
+void tv_scroll(int d);
 
 void modules_init(void);
 void focus_modules_init(void);

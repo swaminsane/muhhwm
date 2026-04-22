@@ -30,7 +30,7 @@ SRC = src/muhh.c \
 
 OBJ = $(SRC:.c=.o)
 
-all: muhhwm muhhtime
+all: muhhwm muhhtime muhhbar
 
 muhhwm: $(OBJ)
 	$(CC) -o $@ $(OBJ) $(LDFLAGS)
@@ -38,20 +38,28 @@ muhhwm: $(OBJ)
 muhhtime: tools/muhhtime.c
 	$(CC) -o $@ tools/muhhtime.c -D_XOPEN_SOURCE=700 -D_POSIX_C_SOURCE=200809L
 
+muhhbar:
+	$(MAKE) -C tools/muhhbar
+
 %.o: %.c src/muhh.h config.h
 	$(CC) -c $(CFLAGS) -o $@ $<
 
 clean:
 	rm -f muhhwm muhhtime $(OBJ)
+	$(MAKE) -C tools/muhhbar clean
 
-install: muhhwm muhhtime
+install: muhhwm muhhtime muhhbar
 	mkdir -p $(BINDIR)
 	cp -f muhhwm $(BINDIR)
 	cp -f muhhtime $(BINDIR)
+	cp -f tools/muhhbar/muhhbar $(BINDIR)
 	chmod 755 $(BINDIR)/muhhwm
 	chmod 755 $(BINDIR)/muhhtime
+	chmod 755 $(BINDIR)/muhhbar
+
 uninstall:
 	rm -f $(BINDIR)/muhhwm
 	rm -f $(BINDIR)/muhhtime
+	rm -f $(BINDIR)/muhhbar
 
 .PHONY: all clean install uninstall

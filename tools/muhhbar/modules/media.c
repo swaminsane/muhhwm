@@ -1,36 +1,27 @@
-/* media.c - muhhbar media module
- * shows current track, left click toggles play/pause, right click opens
- * musicmenu
- */
 #define _POSIX_C_SOURCE 200809L
 #include "common.h"
 
-#define YT_PID_FILE "/tmp/yt_mpv.pid"
-#define RADIO_PID_FILE "/tmp/radio.pid"
-#define PODCAST_PID_FILE "/tmp/podcast.pid"
-#define YT_SOCKET "/tmp/yt_mpv.sock"
-#define RADIO_SOCKET "/tmp/radio_mpv.sock"
-#define PODCAST_SOCKET "/tmp/podcast.sock"
+#define YT_PID "/tmp/yt_mpv.pid"
+#define RAD_PID "/tmp/radio.pid"
+#define POD_PID "/tmp/podcast.pid"
+#define YT_SOCK "/tmp/yt_mpv.sock"
+#define RAD_SOCK "/tmp/radio_mpv.sock"
+#define POD_SOCK "/tmp/podcast.sock"
 
-/* display state */
-static char media_text[64] = "--";
-static int media_paused = 0;
+static char media_text[16] = "[OFF]";
 
-/* ── helpers ─────────────────────────────────────────────────────────── */
-
-static int pid_running(const char *pidfile) {
-  FILE *f = fopen(pidfile, "r");
-  if (!f)
+static int pid_live(const char *f) {
+  FILE *p = fopen(f, "r");
+  if (!p)
     return 0;
   int pid = 0;
-  (void)fscanf(f, "%d", &pid);
-  fclose(f);
+  (void)fscanf(p, "%d", &pid);
+  fclose(p);
   if (pid <= 0)
     return 0;
-  /* kill -0 equivalent: check /proc/pid */
   char path[32];
   snprintf(path, sizeof path, "/proc/%d", pid);
-  FILE *p = fopen(path, "r");
+  p = fopen(path, "r");
   if (p) {
     fclose(p);
     return 1;
@@ -38,152 +29,67 @@ static int pid_running(const char *pidfile) {
   return 0;
 }
 
-/* query mpv IPC socket for a string property */
-static int mpv_get_str(const char *socket, const char *prop, char *out,
-                       size_t sz) {
-  char cmd[256];
+static int mpv_paused(const char *sock) {
+  char cmd[128];
   snprintf(cmd, sizeof cmd,
-           "echo '{\"command\":[\"get_property\",\"%s\"]}' | "
-           "socat - %s 2>/dev/null | "
-           "python3 -c \""
-           "import sys,json;"
-           "d=json.load(sys.stdin);"
-           "print(d.get('data','') or '')\" 2>/dev/null",
-           prop, socket);
-  FILE *f = popen(cmd, "r");
-  if (!f)
-    return 0;
-  out[0] = '\0';
-  (void)fgets(out, (int)sz, f);
-  pclose(f);
-  /* strip newline */
-  char *nl = strchr(out, '\n');
-  if (nl)
-    *nl = '\0';
-  return out[0] != '\0';
+           "echo '{\"command\":[\"get_property\",\"pause\"]}' | "
+           "socat - %s 2>/dev/null | grep -q '\"data\":true'",
+           sock);
+  return system(cmd) == 0;
 }
-
-static int mpv_get_paused(const char *socket) {
-  char buf[16];
-  if (!mpv_get_str(socket, "pause", buf, sizeof buf))
-    return 0;
-  return strcmp(buf, "True") == 0;
-}
-
-/* truncate title to fit module width */
-static void truncate_title(const char *prefix, const char *title, char *out,
-                           size_t sz) {
-  /* max chars that fit = (width - lrpad) / avg_char_width */
-  int max_chars = (focusmods[MOD_MEDIA].width - lrpad) / 8;
-  if (max_chars < 4)
-    max_chars = 4;
-  char tmp[256];
-  snprintf(tmp, sizeof tmp, "%s %s", prefix, title);
-  if ((int)strlen(tmp) > max_chars) {
-    tmp[max_chars - 1] = '.';
-    tmp[max_chars - 0] = '.';
-    tmp[max_chars + 1] = '\0';
-  }
-  snprintf(out, sz, "%s", tmp);
-}
-
-/* ── update ──────────────────────────────────────────────────────────── */
 
 void media_update(void) {
-  char title[256] = {0};
-
-  if (pid_running(YT_PID_FILE)) {
-    mpv_get_str(YT_SOCKET, "media-title", title, sizeof title);
-    media_paused = mpv_get_paused(YT_SOCKET);
-    truncate_title("YT", title[0] ? title : "...", media_text,
-                   sizeof media_text);
-
-  } else if (pid_running(RADIO_PID_FILE)) {
-    mpv_get_str(RADIO_SOCKET, "media-title", title, sizeof title);
-    media_paused = 0; /* radio is always live */
-    truncate_title("~", title[0] ? title : "Radio", media_text,
-                   sizeof media_text);
-
-  } else if (pid_running(PODCAST_PID_FILE)) {
-    mpv_get_str(PODCAST_SOCKET, "media-title", title, sizeof title);
-    media_paused = mpv_get_paused(PODCAST_SOCKET);
-    truncate_title("Pod", title[0] ? title : "...", media_text,
-                   sizeof media_text);
-
+  if (pid_live(YT_PID)) {
+    snprintf(media_text, sizeof media_text,
+             mpv_paused(YT_SOCK) ? "[|| YT]" : "[> YT]");
+  } else if (pid_live(RAD_PID)) {
+    snprintf(media_text, sizeof media_text, "[> RAD]");
+  } else if (pid_live(POD_PID)) {
+    snprintf(media_text, sizeof media_text,
+             mpv_paused(POD_SOCK) ? "[|| POD]" : "[> POD]");
   } else {
-    /* MPC */
-    FILE *f = popen("/usr/bin/mpc current 2>/dev/null", "r");
+    FILE *f = popen("/usr/bin/mpc status 2>/dev/null", "r");
+    media_text[0] = '\0';
     if (f) {
-      (void)fgets(title, sizeof title, f);
-      pclose(f);
-      char *nl = strchr(title, '\n');
-      if (nl)
-        *nl = '\0';
-    }
-
-    if (title[0]) {
-      /* check pause state */
-      FILE *s = popen("/usr/bin/mpc status 2>/dev/null", "r");
-      media_paused = 1; /* assume paused unless [playing] found */
-      if (s) {
-        char line[128];
-        while (fgets(line, sizeof line, s)) {
-          if (strstr(line, "[playing]")) {
-            media_paused = 0;
-            break;
-          }
+      char line[64];
+      while (fgets(line, sizeof line, f)) {
+        if (strstr(line, "[playing]")) {
+          snprintf(media_text, sizeof media_text, "[> MPC]");
+          break;
+        } else if (strstr(line, "[paused]")) {
+          snprintf(media_text, sizeof media_text, "[|| MPC]");
+          break;
         }
-        pclose(s);
       }
-      truncate_title("", title, media_text, sizeof media_text);
-    } else {
-      snprintf(media_text, sizeof media_text, "--");
-      media_paused = 0;
+      pclose(f);
     }
+    if (!media_text[0])
+      snprintf(media_text, sizeof media_text, "[OFF]");
   }
 }
-
-/* ── draw ────────────────────────────────────────────────────────────── */
 
 int media_draw(int x) {
-  int sch = SchNorm;
-  if (strcmp(media_text, "--") == 0)
-    sch = SchGrey;
-  else if (media_paused)
-    sch = SchGrey;
-
-  /* prepend play/pause indicator */
-  char display[72];
-  if (strcmp(media_text, "--") == 0) {
-    snprintf(display, sizeof display, "--");
-  } else {
-    snprintf(display, sizeof display, "%s %s", media_paused ? "||" : ">",
-             media_text);
-  }
-
+  int sch = (media_text[1] == 'O' || media_text[1] == '|') ? SchGrey : SchNorm;
   drw_setscheme(drw, scheme[sch]);
   return drw_text(drw, x, 0, (unsigned int)focusmods[MOD_MEDIA].width,
-                  (unsigned int)barh, (unsigned int)(lrpad / 2), display, 0);
+                  (unsigned int)barh, (unsigned int)(lrpad / 2), media_text, 0);
 }
-
-/* ── click ───────────────────────────────────────────────────────────── */
 
 void media_click(int button) {
   if (button == 1) {
-    /* toggle play/pause */
-    if (pid_running(YT_PID_FILE)) {
+    if (pid_live(YT_PID)) {
       static const char *cmd[] = {"/bin/sh", "-c",
                                   "echo '{\"command\":[\"cycle\",\"pause\"]}' "
                                   "| socat - /tmp/yt_mpv.sock",
                                   NULL};
       spawn(cmd);
-    } else if (pid_running(RADIO_PID_FILE)) {
+    } else if (pid_live(RAD_PID)) {
       static const char *cmd[] = {"/bin/sh", "-c",
                                   "echo '{\"command\":[\"cycle\",\"pause\"]}' "
                                   "| socat - /tmp/radio_mpv.sock",
                                   NULL};
       spawn(cmd);
-    } else if (pid_running(PODCAST_PID_FILE)) {
+    } else if (pid_live(POD_PID)) {
       static const char *cmd[] = {"/bin/sh", "-c",
                                   "echo '{\"command\":[\"cycle\",\"pause\"]}' "
                                   "| socat - /tmp/podcast.sock",
@@ -193,11 +99,31 @@ void media_click(int button) {
       static const char *cmd[] = {"/usr/bin/mpc", "toggle", NULL};
       spawn(cmd);
     }
-    /* force immediate update */
+    focusmods[MOD_MEDIA].updated = 0;
+  } else if (button == 2) {
+    /* middle click: toggle MPD stop/start */
+    FILE *f = popen("/usr/bin/mpc status 2>/dev/null", "r");
+    int stopped = 1;
+    if (f) {
+      char line[64];
+      while (fgets(line, sizeof line, f))
+        if (strstr(line, "[playing]") || strstr(line, "[paused]")) {
+          stopped = 0;
+          break;
+        }
+      pclose(f);
+    }
+    if (stopped) {
+      static const char *cmd[] = {"/usr/bin/mpc", "play", NULL};
+      spawn(cmd);
+    } else {
+      static const char *cmd[] = {"/usr/bin/mpc", "stop", NULL};
+      spawn(cmd);
+    }
     focusmods[MOD_MEDIA].updated = 0;
   } else if (button == 3) {
-    static const char *cmd[] = {"/bin/sh", "-c",
-                                "$HOME/.local/bin/menu/music/musicmenu", NULL};
+    static const char *cmd[] = {"/bin/bash", "-c",
+                                "$HOME/.local/bin/menu/musicmenu", NULL};
     spawn(cmd);
   }
 }
