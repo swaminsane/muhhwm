@@ -58,9 +58,8 @@ void bar_whichkey_key(KeySym ks) {
     return;
   }
 
-  char c = (char)ks;
   for (int i = 0; i < wk_ncur; i++) {
-    if (wk_cur[i].key == c) {
+    if (wk_cur[i].key == ks) {
       if (wk_cur[i].cmd) {
         /* leaf — execute and close */
         const char *cmd[] = {"/bin/sh", "-c", wk_cur[i].cmd, NULL};
@@ -181,7 +180,8 @@ void bar_draw(Monitor *m) {
       int hx = x;
       for (i = 0; i < (unsigned int)wk_ncur; i++) {
         char hint[64];
-        snprintf(hint, sizeof(hint), " [%c] %s ", wk_cur[i].key,
+        const char *ksname = XKeysymToString(wk_cur[i].key);
+        snprintf(hint, sizeof(hint), " [%s] %s ", ksname ? ksname : "?",
                  wk_cur[i].label);
         int hw = TEXTW(hint);
         if (hx + hw > m->bar.w - tw)

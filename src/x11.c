@@ -1004,7 +1004,7 @@ static void keypress(XEvent *e) {
   KeySym keysym;
   XKeyEvent *ev = &e->xkey;
 
-  keysym = XKeycodeToKeysym(wm.dpy, (KeyCode)ev->keycode, 0);
+  keysym = XLookupKeysym(ev, (ev->state & ShiftMask) ? 1 : 0);
 
   if (bar_whichkey_active()) {
     bar_whichkey_key(keysym);
