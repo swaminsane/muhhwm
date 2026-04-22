@@ -50,6 +50,7 @@ static const Key keys[] = {
     {MODKEY, XK_Return, spawn, {.v = tabtermcmd}},
     {MODKEY | ShiftMask, XK_Return, spawn,
      SHCMD("$HOME/.local/bin/st-samedir")},
+    {MODKEY, XK_x, whichkey, {0}},
     {MODKEY, XK_c, killclient, {0}},
     {MODKEY, XK_space, setlayout, {0}},
     {MODKEY | ShiftMask, XK_space, togglefloating, {0}},

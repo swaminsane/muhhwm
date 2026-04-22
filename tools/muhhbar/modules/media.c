@@ -123,7 +123,7 @@ void media_click(int button) {
     focusmods[MOD_MEDIA].updated = 0;
   } else if (button == 3) {
     static const char *cmd[] = {"/bin/bash", "-c",
-                                "$HOME/.local/bin/menu/musicmenu", NULL};
+                                "$HOME/.local/bin/menu/music/musicmenu", NULL};
     spawn(cmd);
   }
 }

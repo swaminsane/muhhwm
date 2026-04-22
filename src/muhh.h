@@ -236,11 +236,19 @@ void viewadjacentns(const Arg *arg);
 void tagadjacentns(const Arg *arg);
 void viewadjacent(const Arg *arg);
 void tagadjacent(const Arg *arg);
+void whichkey(const Arg *arg);
+void x11_grabkeys(void);
 
 /* bar.c */
 void bar_init(Monitor *m);
 void bar_draw(Monitor *m);
 void bar_click(Monitor *m, int x, int button);
+void bar_whichkey_activate(void);
+void bar_whichkey_key(KeySym ks);
+int bar_whichkey_active(void);
+void bar_whichkey_activate(void);
+void bar_whichkey_key(KeySym ks);
+int bar_whichkey_active(void);
 extern char stext[256];
 
 /* fs.c */

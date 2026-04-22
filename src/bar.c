@@ -1,14 +1,88 @@
+
 /* bar.c - muhhwm bar drawing */
 
 #include <stdio.h>
 #include <string.h>
 
 #include <X11/Xlib.h>
+#include <X11/keysym.h>
 
+#include "../whichbinds.h"
 #include "config.h"
 #include "muhh.h"
 
 static int bh(void) { return wm.drw->fonts->h + 2; }
+
+/* ── which-key state ─────────────────────────────────────────────────────── */
+
+static int wk_active = 0;
+static WhichKey *wk_cur = NULL;
+static int wk_ncur = 0;
+
+static void wk_grab_all(void) {
+  /* remove all existing key grabs and grab every key on root */
+  XUngrabKey(wm.dpy, AnyKey, AnyModifier, wm.root);
+  XGrabKey(wm.dpy, AnyKey, AnyModifier, wm.root, True, GrabModeAsync,
+           GrabModeAsync);
+}
+
+static void wk_ungrab_all(void) {
+  /* release the any-key grab and restore normal grabs */
+  XUngrabKey(wm.dpy, AnyKey, AnyModifier, wm.root);
+  x11_grabkeys();
+}
+
+void bar_whichkey_activate(void) {
+  wk_active = 1;
+  wk_cur = wk_root;
+  wk_ncur = (int)(sizeof(wk_root) / sizeof(wk_root[0]));
+  wk_grab_all();
+  for (Monitor *m = wm.mons; m; m = m->next)
+    bar_draw(m);
+}
+
+int bar_whichkey_active(void) { return wk_active; }
+
+static void wk_close(void) {
+  wk_active = 0;
+  wk_cur = NULL;
+  wk_ncur = 0;
+  wk_ungrab_all();
+  for (Monitor *m = wm.mons; m; m = m->next)
+    bar_draw(m);
+}
+
+void bar_whichkey_key(KeySym ks) {
+  if (ks == XK_Escape) {
+    wk_close();
+    return;
+  }
+
+  char c = (char)ks;
+  for (int i = 0; i < wk_ncur; i++) {
+    if (wk_cur[i].key == c) {
+      if (wk_cur[i].cmd) {
+        /* leaf — execute and close */
+        const char *cmd[] = {"/bin/sh", "-c", wk_cur[i].cmd, NULL};
+        Arg a = {.v = cmd};
+        spawn(&a);
+        wk_close();
+      } else {
+        /* prefix — descend */
+        WhichKey *next = wk_cur[i].children;
+        int nnext = wk_cur[i].nchildren;
+        wk_cur = next;
+        wk_ncur = nnext;
+        for (Monitor *m = wm.mons; m; m = m->next)
+          bar_draw(m);
+      }
+      return;
+    }
+  }
+  /* unknown key — stay open */
+}
+
+/* ── bar_init ────────────────────────────────────────────────────────────── */
 
 void bar_init(Monitor *m) {
   XSetWindowAttributes wa = {.override_redirect = True,
@@ -21,7 +95,6 @@ void bar_init(Monitor *m) {
   m->bar.showbar = showbar;
   m->bar.topbar = topbar;
 
-  /* position */
   m->wh = m->mh;
   if (m->bar.showbar) {
     m->wh -= h;
@@ -46,6 +119,8 @@ void bar_init(Monitor *m) {
   XSetClassHint(wm.dpy, m->bar.win, &ch);
 }
 
+/* ── bar_draw ────────────────────────────────────────────────────────────── */
+
 void bar_draw(Monitor *m) {
   int x, w, tw = 0;
   int boxs = wm.drw->fonts->h / 9;
@@ -58,7 +133,7 @@ void bar_draw(Monitor *m) {
   if (!m->bar.showbar)
     return;
 
-  /* status text - only on selected monitor */
+  /* status text — only on selected monitor */
   if (m == wm.selmon) {
     drw_setscheme(wm.drw, wm.scheme[SchemeNorm]);
     tw = TEXTW(stext) - wm.lrpad + 2;
@@ -96,21 +171,44 @@ void bar_draw(Monitor *m) {
   drw_setscheme(wm.drw, wm.scheme[SchemeNorm]);
   x = drw_text(wm.drw, x, 0, w, h, wm.lrpad / 2, ct->lt[ct->sellt]->symbol, 0);
 
-  /* window title */
+  /* title area */
   if ((w = m->bar.w - tw - x) > h) {
-    if (ns->sel) {
-      drw_setscheme(wm.drw, wm.scheme[m == wm.selmon ? SchemeSel : SchemeNorm]);
-      drw_text(wm.drw, x, 0, w, h, wm.lrpad / 2, ns->sel->name, 0);
-      if (ns->sel->isfloating)
-        drw_rect(wm.drw, x + boxs, boxs, boxw, boxw, ns->sel->isfixed, 0);
-    } else {
+    if (wk_active) {
+      /* which-key mode: show hints in title area */
       drw_setscheme(wm.drw, wm.scheme[SchemeNorm]);
       drw_rect(wm.drw, x, 0, w, h, 1, 1);
+
+      int hx = x;
+      for (i = 0; i < (unsigned int)wk_ncur; i++) {
+        char hint[64];
+        snprintf(hint, sizeof(hint), " [%c] %s ", wk_cur[i].key,
+                 wk_cur[i].label);
+        int hw = TEXTW(hint);
+        if (hx + hw > m->bar.w - tw)
+          break;
+        drw_setscheme(wm.drw, wm.scheme[i % 2 == 0 ? SchemeNorm : SchemeSel]);
+        drw_text(wm.drw, hx, 0, hw, h, 0, hint, 0);
+        hx += hw;
+      }
+    } else {
+      /* normal mode — window title */
+      if (ns->sel) {
+        drw_setscheme(wm.drw,
+                      wm.scheme[m == wm.selmon ? SchemeSel : SchemeNorm]);
+        drw_text(wm.drw, x, 0, w, h, wm.lrpad / 2, ns->sel->name, 0);
+        if (ns->sel->isfloating)
+          drw_rect(wm.drw, x + boxs, boxs, boxw, boxw, ns->sel->isfixed, 0);
+      } else {
+        drw_setscheme(wm.drw, wm.scheme[SchemeNorm]);
+        drw_rect(wm.drw, x, 0, w, h, 1, 1);
+      }
     }
   }
 
   drw_map(wm.drw, m->bar.win, 0, 0, m->bar.w, h);
 }
+
+/* ── bar_click ───────────────────────────────────────────────────────────── */
 
 void bar_click(Monitor *m, int ex, int button) {
   unsigned int i, x;
@@ -121,7 +219,7 @@ void bar_click(Monitor *m, int ex, int button) {
   /* namespace label */
   x = TEXTW(nsnames[m->ans]);
   if (ex < (int)x) {
-    click = ClkLtSymbol; /* reuse - namespace click */
+    click = ClkLtSymbol;
     goto dispatch;
   }
 

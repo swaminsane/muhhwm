@@ -685,7 +685,7 @@ static void grabbuttons(Client *c, int focused) {
   }
 }
 
-static void grabkeys(void) {
+void grabkeys(void) {
   updatenumlockmask();
   {
     unsigned int i, j, k;
@@ -1005,6 +1005,17 @@ static void keypress(XEvent *e) {
   XKeyEvent *ev = &e->xkey;
 
   keysym = XKeycodeToKeysym(wm.dpy, (KeyCode)ev->keycode, 0);
+
+  if (bar_whichkey_active()) {
+    bar_whichkey_key(keysym);
+    return;
+  }
+
+  if (keysym == XK_x && CLEANMASK(ev->state) == CLEANMASK(MODKEY)) {
+    bar_whichkey_activate();
+    return;
+  }
+
   for (i = 0; i < LENGTH(keys); i++)
     if (keysym == keys[i].keysym &&
         CLEANMASK(keys[i].mod) == CLEANMASK(ev->state) && keys[i].func)
@@ -1712,3 +1723,10 @@ void tagadjacentns(const Arg *arg) {
   x11_arrange(wm.selmon);
   bar_draw(wm.selmon);
 }
+
+void whichkey(const Arg *arg) {
+  (void)arg;
+  bar_whichkey_activate();
+}
+
+void x11_grabkeys(void) { grabkeys(); }
