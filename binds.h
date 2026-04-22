@@ -22,6 +22,7 @@
 
 /* ── modifier ───────────────────────────────────────────────────────────── */
 
+#include <X11/X.h>
 #define MODKEY Mod4Mask
 
 /* ── helpers ────────────────────────────────────────────────────────────── */
@@ -50,10 +51,10 @@ static const Key keys[] = {
     {MODKEY, XK_Return, spawn, {.v = tabtermcmd}},
     {MODKEY | ShiftMask, XK_Return, spawn,
      SHCMD("$HOME/.local/bin/st-samedir")},
-    {MODKEY, XK_Alt_L, whichkey, {0}},
+    {MODKEY, XK_space, whichkey, {0}},
     {MODKEY, XK_c, killclient, {0}},
-    {MODKEY, XK_space, setlayout, {0}},
-    {MODKEY | ShiftMask, XK_space, togglefloating, {0}},
+    {MODKEY, XK_Alt_L, setlayout, {0}},
+    {MODKEY | ShiftMask, XK_Alt_L, togglefloating, {0}},
     {MODKEY, XK_b, togglebar, {0}},
     {MODKEY | ShiftMask, XK_q, quit, {0}},
 

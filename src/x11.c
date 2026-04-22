@@ -1004,17 +1004,13 @@ static void keypress(XEvent *e) {
   KeySym keysym;
   XKeyEvent *ev = &e->xkey;
 
-  keysym = XLookupKeysym(ev, (ev->state & ShiftMask) ? 1 : 0);
-
   if (bar_whichkey_active()) {
+    keysym = XLookupKeysym(ev, (ev->state & ShiftMask) ? 1 : 0);
     bar_whichkey_key(keysym);
     return;
   }
 
-  if (keysym == XK_x && CLEANMASK(ev->state) == CLEANMASK(MODKEY)) {
-    bar_whichkey_activate();
-    return;
-  }
+  keysym = XKeycodeToKeysym(wm.dpy, (KeyCode)ev->keycode, 0);
 
   for (i = 0; i < LENGTH(keys); i++)
     if (keysym == keys[i].keysym &&

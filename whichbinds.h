@@ -14,6 +14,7 @@
 
 #ifndef WHICHBINDS_H
 #define WHICHBINDS_H
+#include <X11/XF86keysym.h>
 #include <X11/keysym.h>
 
 /* ── data structure ──────────────────────────────────────────────────────── */
