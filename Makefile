@@ -30,6 +30,9 @@ SRC = src/muhh.c \
 
 OBJ = $(SRC:.c=.o)
 
+config.h:
+	cp config.def.h config.h
+
 all: muhhwm muhhtime muhhbar
 
 muhhwm: $(OBJ)
