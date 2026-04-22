@@ -52,6 +52,7 @@ static const Key keys[] = {
     {MODKEY | ShiftMask, XK_Return, spawn,
      SHCMD("$HOME/.local/bin/st-samedir")},
     {MODKEY, XK_space, whichkey, {0}},
+    {MODKEY, XK_Insert, barnotes, {0}},
     {MODKEY, XK_c, killclient, {0}},
     {MODKEY, XK_Alt_L, setlayout, {0}},
     {MODKEY | ShiftMask, XK_Alt_L, togglefloating, {0}},
@@ -74,9 +75,6 @@ static const Key keys[] = {
     {MODKEY, XK_F3, switchns, {.i = 2}},
 
     /* ── apps ──────────────────────────────────────────────────────────── */
-    {MODKEY, XK_e, spawn, SHCMD("st -e nvim")},
-    {MODKEY, XK_n, spawn,
-     SHCMD("st -t notes -e nvim $HOME/sync/docs/notes/quicknotes.md")},
     {MODKEY | ShiftMask, XK_f, spawn, SHCMD("firefox")},
 
     /* ── dmenu scripts ──────────────────────────────────────────────────── */

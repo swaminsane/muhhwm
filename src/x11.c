@@ -57,6 +57,7 @@ static void maprequest(XEvent *e);
 static void motionnotify(XEvent *e);
 static void propertynotify(XEvent *e);
 static void unmapnotify(XEvent *e);
+static void selectionnotify(XEvent *e);
 
 static void (*handler[LASTEvent])(XEvent *) = {
     [ButtonPress] = buttonpress,
@@ -73,6 +74,7 @@ static void (*handler[LASTEvent])(XEvent *) = {
     [MotionNotify] = motionnotify,
     [PropertyNotify] = propertynotify,
     [UnmapNotify] = unmapnotify,
+    [SelectionNotify] = selectionnotify,
 };
 
 /* ── static helper forward decls ─────────────────────────────────────────── */
@@ -999,6 +1001,8 @@ static void focusin(XEvent *e) {
     setfocus(ns->sel);
 }
 
+static void selectionnotify(XEvent *e) { bar_selection_notify(e); }
+
 static void keypress(XEvent *e) {
   unsigned int i;
   KeySym keysym;
@@ -1007,6 +1011,12 @@ static void keypress(XEvent *e) {
   if (bar_whichkey_active()) {
     keysym = XLookupKeysym(ev, (ev->state & ShiftMask) ? 1 : 0);
     bar_whichkey_key(keysym);
+    return;
+  }
+
+  if (bar_notes_active()) {
+    keysym = XLookupKeysym(ev, (ev->state & ShiftMask) ? 1 : 0);
+    bar_notes_key(keysym, ev->state);
     return;
   }
 
@@ -1258,7 +1268,8 @@ void x11_init(void) {
   wm.lrpad = wm.drw->fonts->h;
 
   xerrorxlib = XSetErrorHandler(xerrorstart);
-  XSelectInput(wm.dpy, DefaultRootWindow(wm.dpy), SubstructureRedirectMask);
+  XSelectInput(wm.dpy, DefaultRootWindow(wm.dpy),
+               SubstructureRedirectMask | PropertyChangeMask);
   XSync(wm.dpy, False);
   XSetErrorHandler(xerror);
   XSync(wm.dpy, False);
@@ -1726,3 +1737,8 @@ void whichkey(const Arg *arg) {
 }
 
 void x11_grabkeys(void) { grabkeys(); }
+
+void barnotes(const Arg *arg) {
+  (void)arg;
+  bar_notes_activate();
+}

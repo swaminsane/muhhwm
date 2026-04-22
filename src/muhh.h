@@ -194,6 +194,7 @@ extern WMState wm;
 #define CURTAG(ns) (&(ns)->tags[(__builtin_ctz((ns)->tagset[(ns)->seltags]))])
 #define TAGMASK ((1 << NTAGS) - 1)
 #define ISVISIBLE(c) ((c)->tags & SELNS()->tagset[SELNS()->seltags])
+#define NOTES_MAXLEN 1024
 
 /* ── function declarations ──────────────────────────────────────────────── */
 
@@ -237,6 +238,7 @@ void tagadjacentns(const Arg *arg);
 void viewadjacent(const Arg *arg);
 void tagadjacent(const Arg *arg);
 void whichkey(const Arg *arg);
+void barnotes(const Arg *arg);
 void x11_grabkeys(void);
 
 /* bar.c */
@@ -249,6 +251,10 @@ int bar_whichkey_active(void);
 void bar_whichkey_activate(void);
 void bar_whichkey_key(KeySym ks);
 int bar_whichkey_active(void);
+void bar_notes_activate(void);
+void bar_notes_key(KeySym ks, unsigned int state);
+void bar_selection_notify(XEvent *e);
+int bar_notes_active(void);
 extern char stext[256];
 
 /* fs.c */

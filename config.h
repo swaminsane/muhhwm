@@ -21,6 +21,8 @@ static const unsigned int refreshrate = 60;
 static const int showbar = 1;
 static const int topbar = 0;
 
+static const char *notes_file = "/home/swaminsane/sync/docs/bar_thoughts.md";
+
 static const char *colors[][3] = {
     /*               fg          bg          border      */
     [SchemeNorm] = {COL_FG, COL_BG, COL_BORDER},

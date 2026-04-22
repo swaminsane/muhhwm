@@ -43,15 +43,14 @@ struct WhichKey {
    .children = (submenu),                                                      \
    .nchildren = (int)(sizeof(submenu) / sizeof(submenu[0]))}
 
-static WhichKey wk_open_nvim[] = {
+static WhichKey wk_nvim[] = {
     WK_LEAF(XK_Return, "nvim", "st -e nvim"),
     WK_LEAF('n', "quicknotes",
             "st -e nvim $HOME/sync/docs/notes/quicknotes.md"),
-    WK_LEAF('m', "muhhwm", "st -e nvim $HOME/.local/src/muhhwm/"),
 };
 
 static WhichKey wk_open[] = {
-    WK_PREFIX('v', "nvim+", wk_open_nvim),
+    WK_PREFIX('v', "nvim+", wk_nvim),
     WK_LEAF('f', "firefox", "firefox"),
     WK_LEAF('F', "lf", "st -e lf"),
     WK_LEAF('t', "terminal", "tabbed -r 2 st -w ''"),
@@ -67,9 +66,20 @@ static WhichKey wk_power[] = {
     WK_LEAF('o', "logout", "pkill -9 muhhwm"),
 };
 
-static WhichKey wk_root[] = {
-    WK_PREFIX('o', "open+", wk_open),
+static WhichKey wk_settings[] = {
+    WK_LEAF('t', "theme", "$HOME/.local/bin/menu/themenu"),
+    WK_LEAF('f', "font", "$HOME/.local/bin/menu/fontmenu"),
+    WK_LEAF('m', "muhhwm", "st -e nvim $HOME/.local/src/muhhwm/"),
+};
+
+static WhichKey wk_system[] = {
     WK_PREFIX('p', "power+", wk_power),
+    WK_PREFIX('s', "settings+", wk_settings),
+};
+
+static WhichKey wk_root[] = {
+    WK_PREFIX('s', "system+", wk_system),
+    WK_PREFIX('o', "open+", wk_open),
 };
 
 #endif /* WHICHBINDS_H */

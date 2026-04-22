@@ -10,6 +10,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <X11/Xatom.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 
@@ -71,6 +72,13 @@ static void sigchld(int s) {
   (void)s;
   while (waitpid(-1, NULL, WNOHANG) > 0)
     ;
+}
+
+static void muhhbar_broadcast_width(void) {
+  Atom a = XInternAtom(dpy, "_MUHHBAR_WIDTH", False);
+  XChangeProperty(dpy, root, a, XA_CARDINAL, 32, PropModeReplace,
+                  (unsigned char *)&barw, 1);
+  XFlush(dpy);
 }
 
 /* ── draw ────────────────────────────────────────────────────────────── */
@@ -176,6 +184,7 @@ static void handle_button(XButtonEvent *ev) {
                         (unsigned int)barh);
       XClearWindow(dpy, barwin);
       XFlush(dpy);
+      muhhbar_broadcast_width();
       draw();
       return;
     }
@@ -288,6 +297,7 @@ int main(void) {
   for (i = 0; i < NSYSMODS; i++)
     barw += sysmods[i].width;
   barw += BLOCK_TOTAL;
+  muhhbar_broadcast_width();
 
   int barx = sw - barw;
   int bary = sh - barh;
@@ -340,6 +350,7 @@ int main(void) {
                         (unsigned int)barh);
       XClearWindow(dpy, barwin);
       XFlush(dpy);
+      muhhbar_broadcast_width();
       redraw = 1;
     }
 
