@@ -41,10 +41,19 @@ struct WhichKey {
    .children = (submenu),                                                      \
    .nchildren = (int)(sizeof(submenu) / sizeof(submenu[0]))}
 
+/* ── ov+ open nvim ───────────────────────────────────────────────────────── */
+
+static WhichKey wk_open_nvim[] = {
+    WK_LEAF('\r', "nvim+", "st -e nvim"),
+    WK_LEAF('n', "quicknotes",
+            "st -e nvim $HOME/sync/docs/notes/quicknotes.md"),
+    WK_LEAF('m', "muhhwm", "st -e nvim $HOME/.local/src/muhhwm/"),
+};
+
 /* ── o+ open ─────────────────────────────────────────────────────────────── */
 
 static WhichKey wk_open[] = {
-    WK_LEAF('v', "nvim", "st -e nvim"),
+    WK_PREFIX('v', "nvim+", wk_open_nvim),
     WK_LEAF('f', "firefox", "firefox"),
     WK_LEAF('F', "psmanfx", "psmanfx"),
     WK_LEAF('t', "terminal", "tabbed -r 2 st -w ''"),
@@ -67,7 +76,6 @@ static WhichKey wk_power[] = {
 static WhichKey wk_root[] = {
     WK_PREFIX('o', "open+", wk_open),
     WK_PREFIX('p', "power+", wk_power),
-    WK_LEAF('n', "note", "st -e nvim $HOME/sync/docs/notes/quicknotes.md"),
 };
 
 #endif /* WHICHBINDS_H */
