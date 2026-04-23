@@ -52,7 +52,7 @@ static const Key keys[] = {
     {MODKEY | ShiftMask, XK_Return, spawn,
      SHCMD("$HOME/.local/bin/st-samedir")},
     {MODKEY, XK_space, whichkey, {0}},
-    {MODKEY, XK_Insert, barnotes, {0}},
+    {MODKEY, XK_n, barnotes, {0}},
     {MODKEY, XK_c, killclient, {0}},
     {MODKEY, XK_Alt_L, setlayout, {0}},
     {MODKEY | ShiftMask, XK_Alt_L, togglefloating, {0}},

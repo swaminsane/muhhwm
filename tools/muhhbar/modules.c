@@ -58,6 +58,11 @@ Mod focusmods[NFOCUSMODS] = {
                       .draw = pomodoro_draw,
                       .click = pomodoro_click,
                       .scroll = pomodoro_scroll},
+    [MOD_TEXTS] = {.interval = 10,
+                   .update = texts_update,
+                   .draw = texts_draw,
+                   .click = texts_click,
+                   .scroll = texts_scroll},
 };
 
 Mod mediamods[NMEDIAMODS] = {
@@ -93,6 +98,7 @@ void focus_modules_init(void) {
   focusmods[MOD_ACTIVITY].width = TEXTW("S 99h59m");
   focusmods[MOD_STREAK].width = TEXTW("-> 999m");
   focusmods[MOD_POMODORO].width = TEXTW("Pomodoro 99m59s");
+  focusmods[MOD_TEXTS].width = TEXTW("[xxxxxxxxxxxxxxxxxxxx]");
   for (i = 0; i < NFOCUSMODS; i++) {
     focusmods[i].update();
     focusmods[i].updated = time(NULL);

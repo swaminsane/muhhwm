@@ -68,6 +68,14 @@ void spawn(const char **cmd) {
   }
 }
 
+static void set_width_atom(void) {
+  Atom a = XInternAtom(dpy, "_MUHHBAR_WIDTH", False);
+  unsigned long w = (unsigned long)barw;
+  XChangeProperty(dpy, root, a, XA_CARDINAL, 32, PropModeReplace,
+                  (unsigned char *)&w, 1);
+  XFlush(dpy);
+}
+
 static void sigchld(int s) {
   (void)s;
   while (waitpid(-1, NULL, WNOHANG) > 0)
@@ -185,6 +193,7 @@ static void handle_button(XButtonEvent *ev) {
       XClearWindow(dpy, barwin);
       XFlush(dpy);
       muhhbar_broadcast_width();
+      set_width_atom();
       draw();
       return;
     }
@@ -319,6 +328,7 @@ int main(void) {
   XSetClassHint(dpy, barwin, &ch);
   XMapRaised(dpy, barwin);
   XFlush(dpy);
+  set_width_atom();
 
   int xfd = ConnectionNumber(dpy);
   draw();
@@ -350,6 +360,7 @@ int main(void) {
                         (unsigned int)barh);
       XClearWindow(dpy, barwin);
       XFlush(dpy);
+      set_width_atom();
       muhhbar_broadcast_width();
       redraw = 1;
     }

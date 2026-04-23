@@ -568,7 +568,7 @@ void bar_draw(Monitor *m) {
 
   /* title area */
   int mbw = muhhbar_width();
-  if ((w = m->bar.w - tw - x) > h) {
+  if ((w = m->bar.w - tw - x - mbw) > h) {
     if (wk_active) {
       /* which-key mode */
       drw_setscheme(wm.drw, wm.scheme[SchemeNorm]);

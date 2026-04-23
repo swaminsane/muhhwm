@@ -20,7 +20,8 @@
 #define MOD_ACTIVITY 0
 #define MOD_STREAK 1
 #define MOD_POMODORO 2
-#define NFOCUSMODS 3
+#define MOD_TEXTS 3
+#define NFOCUSMODS 4
 
 #define MOD_MEDIA 0
 #define MOD_TV 1
@@ -86,6 +87,10 @@ void pomodoro_update(void);
 int pomodoro_draw(int x);
 void pomodoro_click(int b);
 void pomodoro_scroll(int d);
+void texts_update(void);
+int texts_draw(int x);
+void texts_click(int b);
+void texts_scroll(int d);
 
 void media_update(void);
 int media_draw(int x);
