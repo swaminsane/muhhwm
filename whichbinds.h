@@ -49,13 +49,31 @@ static WhichKey wk_nvim[] = {
             "st -e nvim $HOME/sync/docs/notes/quicknotes.md"),
 };
 
+static WhichKey wk_games_linux[] = {
+    WK_LEAF('t', "terraria", "/sdc/ROMs/linux/Terraria/terraria.sh"),
+    WK_LEAF('s', "slay the princess",
+            "st -e /sdc/ROMs/linux/Slay The Princess/slay_the_princess.sh"),
+    WK_LEAF('k', "kingdom-and-castle",
+            "st -e /sdc/ROMs/linux/Kingdoms and Castles/kingdom-and-castle.sh"),
+    WK_LEAF('d', "DDLC", "/sdc/ROMs/linux/DDLC-1.1.1-pc/DDLC.sh"),
+    WK_LEAF('D', "DELTARUNE", "/sdc/ROMs/linux/DELTARUNE/DELTARUNE.sh"),
+    WK_LEAF('b', "buckshot_roulette",
+            "st -e /sdc/ROMs/linux/Buckshot Roulette/buckshot_roulette.sh"),
+    WK_LEAF('c', "chess-5D", "/sdc/ROMs/linux/chess-5D/chess-5D.sh"),
+};
+
+static WhichKey wk_games[] = {
+    WK_PREFIX('l', "linux+", wk_games_linux),
+    WK_LEAF('r', "ROMs", "st -e rom"),
+};
+
 static WhichKey wk_open[] = {
     WK_PREFIX('v', "nvim+", wk_nvim),
     WK_LEAF('f', "firefox", "firefox"),
-    WK_LEAF('F', "lf", "st -e lf"),
+    WK_LEAF('F', "files", "pcmanfm"),
     WK_LEAF('t', "terminal", "tabbed -r 2 st -w ''"),
-    WK_LEAF('z', "zathura", "zathura"),
     WK_LEAF('m', "music", "$HOME/.local/bin/menu/music/musicmenu"),
+    WK_PREFIX('g', "games+", wk_games),
 };
 
 static WhichKey wk_power[] = {

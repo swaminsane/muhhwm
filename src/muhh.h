@@ -270,4 +270,15 @@ void activity_focus(Client *c);
 void activity_update_title(Client *c);
 void activity_flush(void);
 
+/* strip.c */
+#include "strip.h"
+void strip_init(void);
+void strip_tick(void);
+void strip_draw(void);
+void strip_set_ns(int ns);
+void strip_motion(int x, int y);
+void strip_click(int y, int button);
+int strip_window(void);
+Window strip_win(void);
+
 #endif /* MUHH_H */

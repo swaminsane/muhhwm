@@ -57,6 +57,7 @@ void state_switchns(Monitor *m, int ns) {
 
   m->ans = ns;
   wm.ans = ns;
+  strip_set_ns(ns);
 }
 
 void state_seltag(const Arg *arg) {

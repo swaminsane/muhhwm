@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <X11/Xatom.h>
@@ -16,6 +17,7 @@
 #include <X11/cursorfont.h>
 #include <X11/extensions/Xinerama.h>
 #include <X11/keysym.h>
+#include <sys/select.h>
 
 #include "config.h"
 #include "muhh.h"
@@ -859,6 +861,9 @@ static void buttonpress(XEvent *e) {
   if (ev->window == wm.selmon->bar.win) {
     bar_click(wm.selmon, ev->x, ev->button);
     return;
+  } else if (ev->window == strip_win()) {
+    strip_click(ev->y, (int)ev->button);
+    return;
   } else if ((c = wintoclient(ev->window))) {
     x11_focus(c);
     restack(wm.selmon);
@@ -1058,6 +1063,7 @@ static void motionnotify(XEvent *e) {
     x11_focus(NULL);
   }
   mon = m;
+  strip_motion(ev->x_root, ev->y_root);
 }
 
 static void propertynotify(XEvent *e) {
@@ -1371,9 +1377,32 @@ void x11_scan(void) {
 void x11_run(void) {
   XEvent ev;
   XSync(wm.dpy, False);
-  while (wm.running && !XNextEvent(wm.dpy, &ev))
-    if (handler[ev.type])
-      handler[ev.type](&ev);
+
+  int xfd = ConnectionNumber(wm.dpy);
+  static time_t last_strip_tick = 0;
+
+  while (wm.running) {
+    /* wait up to 10 seconds for an X event */
+    fd_set fds;
+    struct timeval tv = {10, 0};
+    FD_ZERO(&fds);
+    FD_SET(xfd, &fds);
+    select(xfd + 1, &fds, NULL, NULL, &tv);
+
+    /* minute tick */
+    time_t now = time(NULL);
+    if (now - last_strip_tick >= 60) {
+      strip_tick();
+      last_strip_tick = now;
+    }
+
+    /* drain all pending X events */
+    while (XPending(wm.dpy)) {
+      XNextEvent(wm.dpy, &ev);
+      if (handler[ev.type])
+        handler[ev.type](&ev);
+    }
+  }
 }
 
 /* ── exported: key handlers ──────────────────────────────────────────────── */
