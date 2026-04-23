@@ -53,8 +53,11 @@ void serialize_restore(void) {
       if (fscanf(f, " %d %d", &num, &ns) == 2) {
         Monitor *m;
         for (m = wm.mons; m; m = m->next)
-          if (m->num == num && ns >= 0 && ns < NNAMESPACES)
+          if (m->num == num && ns >= 0 && ns < NNAMESPACES) {
             m->ans = ns;
+            if (m == wm.selmon)
+              wm.ans = ns;
+          }
       }
       break;
 
