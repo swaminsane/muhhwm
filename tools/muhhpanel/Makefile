@@ -5,7 +5,7 @@ VERSION = 0.1
 PREFIX  = /usr/local
 BINDIR  = $(PREFIX)/bin
 
-INCS = -I. -Icommon \
+INCS = -I. -Icommon -I.. \
        $(shell pkg-config --cflags x11 xft fontconfig)
 
 LIBS = $(shell pkg-config --libs x11 xft fontconfig) -lm

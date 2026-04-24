@@ -1,32 +1,30 @@
 #ifndef PANEL_H
 #define PANEL_H
 
+#include "../colors.h"
+
 /* ── Geometry ───────────────────────────────────── */
 static const int panel_width_pct = 100;
-static const int panel_left_gap = 25;
-static const int panel_right_gap = 25;
-static const int panel_height_pct = 90;
+static const int panel_left_gap = 0;
+static const int panel_right_gap = 0;
+static const int panel_height_pct = 94;
 
 /* ── Appearance ─────────────────────────────────── */
 static const char *panel_fonts[] = {"monospace:size=10"};
 static const char *clock_fonts[] = {"monospace:size=18"};
 
 static const char *panel_colors[][3] = {
-    [0] = {"#d8dee9", "#2e3440", "#3b4252"},
-    [1] = {"#2e3440", "#88c0d0", "#88c0d0"},
-    [2] = {"#4c566a", "#2e3440", "#4c566a"},
-    [3] = {"#bf616a", "#2e3440", "#bf616a"},
+    [0] = {COL_FG, COL_BG, COL_BORDER},           /* normal */
+    [1] = {COL_BG, COL_ACCENT, COL_ACCENT},       /* accent / selected */
+    [2] = {COL_BRIGHT_BLACK, COL_BG, COL_BORDER}, /* dim */
+    [3] = {COL_RED, COL_BG, COL_BORDER},          /* warning */
 };
 
-/* ── Modules for each column ────────────────────── */
-static const char *left_modules[] = {"kde_notifications", "thoughts", "input",
-                                     NULL};
-static const char *middle_modules[] = {
-    "daystrip", "calendar", "activity", "pomodoro", "music", "textsmenu", NULL};
-static const char *right_modules[] = {
-    "clock",       "wifi",         "bluetooth",  "volume", "brightness",
-    "kde_connect", "cpu_governor", "screenshot", "power",  NULL};
-static const char *bottom_modules[] = {"command_runner", NULL};
+/* ── Module lists ───────────────────────────────── */
+static const char *left_modules[] = {"left_placeholder", NULL};
+static const char *middle_modules[] = {"middle_placeholder", NULL};
+static const char *right_modules[] = {"clock", "wifi", NULL};
+static const char *bottom_modules[] = {"bottom_placeholder", NULL};
 static const char *timeline_modules[] = {"timeline", NULL};
 static const char *topstrip_modules[] = {"topstrip", NULL};
 
@@ -54,5 +52,9 @@ static struct {
      .col_modules = {timeline_modules, NULL}},
 };
 #define NUM_ROWS (sizeof(layout_rows) / sizeof(layout_rows[0]))
+
+/* ── Container themes ──────────────────────────── */
+extern ContainerTheme right_theme;
+extern ContainerTheme module_card_theme;
 
 #endif

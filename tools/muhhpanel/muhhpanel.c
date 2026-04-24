@@ -180,38 +180,39 @@ static void handle_client_message(XClientMessageEvent *ev) {
 
 /* ── build full layout (now using container_layout) ─────── */
 static void build_layout(void) {
-  int fixed_sum = 0;
-  int pct_sum = 0;
+  Module *root = container_create_manual(1);
+  container_set_gap(root, MODULE_VGAP);
+
   for (size_t r = 0; r < NUM_ROWS; r++) {
     int hpct = layout_rows[r].height_pct;
+
+    Module *row = container_create_manual(0);
+    container_set_gap(row, MODULE_HGAP);
+
+    /* row height hint */
     if (hpct < 0)
-      fixed_sum += -hpct;
+      module_set_hints(row, 0, -hpct, 0, 0, 0, 0);
     else
-      pct_sum += hpct;
-  }
-  int remaining_h = panel_h - fixed_sum;
-  if (remaining_h < 0)
-    remaining_h = 0;
+      module_set_hints(row, 0, 0, 0, 1, 0, (float)hpct);
 
-  Module *root_vert = container_create_manual(1);
-
-  for (size_t r = 0; r < NUM_ROWS; r++) {
-    int hpct = layout_rows[r].height_pct;
-    int row_h = (hpct < 0) ? -hpct : (remaining_h * hpct) / pct_sum;
-
-    Module *row_horiz = container_create_manual(0);
-    row_horiz->h = row_h;
+    container_add_child(root, row);
 
     for (int c = 0; c < 4 && layout_rows[r].col_widths[c] > 0; c++) {
-      int col_w = (panel_w * layout_rows[r].col_widths[c]) / 100;
       const char **modlist = layout_rows[r].col_modules[c];
-      Module *col = container_create(modlist, 1);
-      col->w = col_w;
-      container_add_child(row_horiz, col);
+      Module *col;
+
+      if (r == 1 && c == 2)
+        col =
+            container_create_themed(modlist, 1, (ContainerTheme *)&right_theme);
+      else
+        col = container_create(modlist, 1);
+
+      module_set_hints(col, 0, 0, 1, 1, (float)layout_rows[r].col_widths[c], 1);
+      container_add_child(row, col);
     }
-    container_add_child(root_vert, row_horiz);
   }
-  root_container = root_vert;
+
+  root_container = root;
   container_layout(root_container, 0, 0, panel_w, panel_h);
 }
 
@@ -356,6 +357,7 @@ int main(void) {
   if (!drw_fontset_create(drw, panel_fonts, LENGTH(panel_fonts)))
     die("muhhpanel: no fonts loaded\n");
   init_scheme();
+  init_themes();
   update_geometry();
 
   XSetWindowAttributes wa;

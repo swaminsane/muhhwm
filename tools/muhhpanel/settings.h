@@ -1,15 +1,24 @@
 #ifndef SETTINGS_H
 #define SETTINGS_H
 
-/* animation */
-#define SHOW_STEPS 3          /* number of slide steps */
-#define SHOW_STEP_DELAY_MS 10 /* ms between steps */
+/* ─── animation ───────────────────────────────── */
+#define SHOW_STEPS 3
+#define SHOW_STEP_DELAY_MS 10
 
-/* command runner history */
-#define COMMAND_HISTORY_MAX 100 /* max persisted history lines, 0=off */
-#define COMMAND_HISTORY_FILE "/tmp/muhhpanel_history"
+/* ─── spacing ─────────────────────────────────── */
+#define CONTAINER_PADDING 4
+#define MODULE_MARGIN 8
+#define MODULE_PADDING 4
+#define GRID_CELL_MIN_H 40
+#define SLIDER_BAR_H 10
+#define COLUMN_SPACING 2
+#define ROW_SPACING 2
 
-/* module update intervals (seconds) */
+#define MODULE_VGAP 6
+#define MODULE_HGAP 12
+#define CONTAINER_PADDING 4
+
+/* ─── module update intervals (seconds) ──────── */
 #define CLOCK_UPDATE_IV 1
 #define WIFI_POLL_IV 5
 #define BT_POLL_IV 5
@@ -23,18 +32,25 @@
 #define CALENDAR_POLL_IV 60
 #define ACTIVITY_POLL_IV 10
 #define POMODORO_POLL_IV 1
-#define TIMELINE_HEIGHT 13
 
-/* paths / commands */
-#define WIFI_CMD "nmcli"
-#define BT_CMD "bluetoothctl"
-#define VOLUME_CMD "pactl"
-#define BRIGHTNESS_CMD "brightnessctl"
-#define TEMPERATURE_CMD "xsct"
-#define SCREENSHOT_CMD "scrot"
+/* ─── module parameters ───────────────────────── */
+#define VOLUME_STEP 5
+#define BRIGHTNESS_STEP 5
+#define TEMP_STEP 100
+#define GOVERNOR_CYCLE "performance ondemand powersave"
 #define SCREENSHOT_DIR "/redmi/DCIM/Screenshots/linux"
-#define TEXTSMENU_RECENT "/home/swaminsane/.cache/textsmenu_recent"
-#define BAR_THOUGHTS_FILE "/home/swaminsane/sync/docs/bar_thoughts.md"
-#define NOTES_MAXLEN 1024
+
+/* ─── power commands ──────────────────────────── */
+#define LOCK_CMD "slock"
+#define SLEEP_CMD "systemctl suspend"
+#define REBOOT_CMD "systemctl reboot"
+#define SHUTDOWN_CMD "systemctl poweroff"
+#define LOGOUT_CMD "pkill -9 muhhwm"
+
+/* ─── behaviour flags ─────────────────────────── */
+#define WIFI_SHOW_SIGNAL_BARS 1
+#define BT_SHOW_DEVICE_TYPE 1
+#define VOLUME_MUTE_ON_CLICK 1
+#define SCREENSHOT_CONFIRM_NOTIFY 1
 
 #endif

@@ -1,4 +1,8 @@
 #include "container.h"
+#include "../colors.h"
+#include "../panel.h"
+#include "panel_globals.h"
+#include "settings.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,92 +26,207 @@ Module *module_by_name(const char *name) {
 }
 
 /* ================================================================
- *  Container structure
+ *  Container structure (private to this file)
  * ================================================================ */
 typedef struct {
   Module base;
   Module **children;
   int nchildren;
-  int vertical; /* 1 = stack vertically, 0 = horizontally */
+  int vertical; /* 1 = column, 0 = row */
+  int gap;      /* px between children */
+  int padding;  /* px inside border */
 } Container;
 
-/* forward declaration so `container_layout` can see it */
+/* themed container */
+typedef struct {
+  Container cont;
+  ContainerTheme *theme;
+} ThemedContainer;
+
+/* forward declarations */
 static void container_draw(Module *self, int x, int y, int w, int h,
                            int focused);
+static void themed_container_draw(Module *self, int x, int y, int w, int h,
+                                  int focused);
 
 /* ================================================================
- *  Recursive layout pass (sets x,y,w,h for every module)
+ *  Theme variables (defined here, declared in panel.h)
  * ================================================================ */
-void container_layout(Module *self, int x, int y, int w, int h) {
-  Container *c = (Container *)self;
-  self->x = x;
-  self->y = y;
-  self->w = w;
-  self->h = h;
+ContainerTheme right_theme;
+ContainerTheme module_card_theme;
+
+/* allocate an X11 pixel from a "#rrggbb" string */
+static unsigned long alloc_color(const char *hex) {
+  XColor col;
+  XParseColor(dpy, DefaultColormap(dpy, DefaultScreen(dpy)), hex, &col);
+  XAllocColor(dpy, DefaultColormap(dpy, DefaultScreen(dpy)), &col);
+  return col.pixel;
+}
+
+void init_themes(void) {
+  right_theme.bg = alloc_color(COL_BG);
+  right_theme.border = alloc_color(COL_BORDER);
+  right_theme.border_w = 1;
+
+  module_card_theme.bg = alloc_color(COL_BRIGHT_BLACK);
+  module_card_theme.border = alloc_color(COL_BORDER);
+  module_card_theme.border_w = 1;
+}
+
+/* ================================================================
+ *  LayoutHint helpers
+ * ================================================================ */
+LayoutHints *module_default_hints(Module *m) { return (LayoutHints *)m->priv; }
+
+void module_set_hints(Module *m, int pref_w, int pref_h, int expand_x,
+                      int expand_y, float weight_x, float weight_y) {
+  LayoutHints *h = calloc(1, sizeof(LayoutHints));
+  h->pref_w = pref_w;
+  h->pref_h = pref_h;
+  h->expand_x = expand_x;
+  h->expand_y = expand_y;
+  h->weight_x = weight_x;
+  h->weight_y = weight_y;
+  m->priv = h;
+  m->get_hints = module_default_hints; /* auto‑configure */
+}
+
+/* ================================================================
+ *  Layout engine (weighted flexbox)
+ * ================================================================ */
+static void layout_instance(Container *c, int x, int y, int w, int h) {
+  c->base.x = x;
+  c->base.y = y;
+  c->base.w = w;
+  c->base.h = h;
+  if (c->nchildren == 0)
+    return;
+
+  int inner_w = w - 2 * c->padding;
+  int inner_h = h - 2 * c->padding;
+  if (inner_w < 1)
+    inner_w = 1;
+  if (inner_h < 1)
+    inner_h = 1;
+
+  int total_gap = (c->nchildren - 1) * c->gap;
+  int *pref = calloc(c->nchildren, sizeof(int));
+  int *exp = calloc(c->nchildren, sizeof(int));
+  float *weight = calloc(c->nchildren, sizeof(float));
+  int total_pref = 0, expand_count = 0;
+  float total_weight = 0.0f;
+
+  for (int i = 0; i < c->nchildren; i++) {
+    Module *ch = c->children[i];
+    LayoutHints *hints = ch->get_hints ? ch->get_hints(ch) : NULL;
+    if (c->vertical) {
+      if (hints && hints->pref_h > 0) {
+        pref[i] = hints->pref_h;
+        total_pref += pref[i];
+      }
+      exp[i] = hints ? hints->expand_y : 1;
+      weight[i] = (hints && hints->weight_y > 0) ? hints->weight_y : 1.0f;
+    } else {
+      if (hints && hints->pref_w > 0) {
+        pref[i] = hints->pref_w;
+        total_pref += pref[i];
+      }
+      exp[i] = hints ? hints->expand_x : 1;
+      weight[i] = (hints && hints->weight_x > 0) ? hints->weight_x : 1.0f;
+    }
+    if (exp[i]) {
+      expand_count++;
+      total_weight += weight[i];
+    }
+  }
+
+  int available = (c->vertical ? inner_h : inner_w) - total_pref - total_gap;
+  if (available < 0)
+    available = 0;
 
   int off = 0;
   for (int i = 0; i < c->nchildren; i++) {
     Module *ch = c->children[i];
-    int cw, ch2;
+    int size = pref[i] > 0 ? pref[i] : 1;
+    if (pref[i] == 0 && expand_count > 0 && total_weight > 0) {
+      size = (int)(available * (weight[i] / total_weight));
+    }
+    if (size < 1)
+      size = 1;
+
     if (c->vertical) {
-      cw = w;
-      ch2 = ch->h ? ch->h : (h / c->nchildren);
+      ch->x = x + c->padding;
+      ch->y = y + c->padding + off;
+      ch->w = inner_w;
+      ch->h = size;
     } else {
-      cw = ch->w ? ch->w : (w / c->nchildren);
-      ch2 = h;
+      ch->x = x + c->padding + off;
+      ch->y = y + c->padding;
+      ch->w = size;
+      ch->h = inner_h;
     }
 
-    int child_x = x + (c->vertical ? 0 : off);
-    int child_y = y + (c->vertical ? off : 0);
-    off += (c->vertical ? ch2 : cw);
+    /* recurse into containers */
+    if (ch->draw == container_draw || ch->draw == themed_container_draw)
+      container_layout(ch, ch->x, ch->y, ch->w, ch->h);
 
-    /* recurse into nested containers */
-    if (ch->draw == container_draw) /* child is a container */
-      container_layout(ch, child_x, child_y, cw, ch2);
-    else {
-      ch->x = child_x;
-      ch->y = child_y;
-      ch->w = cw;
-      ch->h = ch2;
-    }
+    off += size + c->gap;
+  }
+  free(pref);
+  free(exp);
+  free(weight);
+}
+
+void container_layout(Module *self, int x, int y, int w, int h) {
+  if (self->draw == container_draw || self->draw == themed_container_draw) {
+    Container *c = (Container *)self;
+    layout_instance(c, x, y, w, h);
+  } else {
+    self->x = x;
+    self->y = y;
+    self->w = w;
+    self->h = h;
   }
 }
 
 /* ================================================================
- *  Drawing: store child positions so hit‑testing works
+ *  Drawing
  * ================================================================ */
 static void container_draw(Module *self, int x, int y, int w, int h,
                            int focused) {
-  (void)focused;
   Container *c = (Container *)self;
-  int off = 0;
   for (int i = 0; i < c->nchildren; i++) {
     Module *ch = c->children[i];
     if (!ch->draw)
       continue;
+    ch->draw(ch, ch->x, ch->y, ch->w, ch->h, 0);
+  }
+}
 
-    int cw, ch2;
-    if (c->vertical) {
-      cw = w;
-      ch2 = ch->h ? ch->h : (h / c->nchildren);
-    } else {
-      cw = ch->w ? ch->w : (w / c->nchildren);
-      ch2 = h;
+static void themed_container_draw(Module *self, int x, int y, int w, int h,
+                                  int focused) {
+  ThemedContainer *tc = (ThemedContainer *)self;
+  if (tc->theme) {
+    XSetForeground(dpy, drw->gc, tc->theme->bg);
+    XFillRectangle(dpy, drw->drawable, drw->gc, x, y, w, h);
+    if (tc->theme->border_w > 0) {
+      XSetForeground(dpy, drw->gc, tc->theme->border);
+      for (int i = 0; i < tc->theme->border_w; i++)
+        XDrawRectangle(dpy, drw->drawable, drw->gc, x + i, y + i, w - 1 - 2 * i,
+                       h - 1 - 2 * i);
     }
-
-    int child_x = x + (c->vertical ? 0 : off);
-    int child_y = y + (c->vertical ? off : 0);
-
-    ch->x = child_x;
-    ch->y = child_y;
-    ch->draw(ch, child_x, child_y, cw, ch2, 0);
-
-    off += (c->vertical ? ch2 : cw);
+  }
+  Container *c = (Container *)self;
+  for (int i = 0; i < c->nchildren; i++) {
+    Module *ch = c->children[i];
+    if (!ch->draw)
+      continue;
+    ch->draw(ch, ch->x, ch->y, ch->w, ch->h, 0);
   }
 }
 
 /* ================================================================
- *  Click forwarding with hit‑testing
+ *  Input forwarders (use stored positions)
  * ================================================================ */
 static void container_click(Module *self, int x, int y, int btn) {
   Container *c = (Container *)self;
@@ -122,9 +241,6 @@ static void container_click(Module *self, int x, int y, int btn) {
   }
 }
 
-/* ================================================================
- *  Scroll forwarding with hit‑testing
- * ================================================================ */
 static void container_scroll(Module *self, int x, int y, int dir) {
   Container *c = (Container *)self;
   for (int i = 0; i < c->nchildren; i++) {
@@ -138,20 +254,26 @@ static void container_scroll(Module *self, int x, int y, int dir) {
   }
 }
 
-/* ================================================================
- *  Motion forwarding with hit‑testing (passes absolute x,y)
- * ================================================================ */
 static void container_motion(Module *self, int x, int y) {
   Container *c = (Container *)self;
   for (int i = 0; i < c->nchildren; i++) {
-    if (c->children[i]->motion)
-      c->children[i]->motion(c->children[i], x, y);
+    Module *ch = c->children[i];
+    if (!ch->motion)
+      continue;
+    if (x >= ch->x && x < ch->x + ch->w && y >= ch->y && y < ch->y + ch->h) {
+      ch->motion(ch, x, y);
+      return;
+    }
   }
 }
 
-/* ================================================================
- *  Timer forwarding
- * ================================================================ */
+static void container_key(Module *self, int keycode, unsigned int state) {
+  Container *c = (Container *)self;
+  for (int i = 0; i < c->nchildren; i++)
+    if (c->children[i]->key)
+      c->children[i]->key(c->children[i], keycode, state);
+}
+
 static void container_timer(Module *self) {
   Container *c = (Container *)self;
   for (int i = 0; i < c->nchildren; i++)
@@ -178,9 +300,12 @@ Module *container_create(const char **names, int vertical) {
   c->base.click = container_click;
   c->base.scroll = container_scroll;
   c->base.motion = container_motion;
+  c->base.key = container_key;
   c->base.timer = container_timer;
   c->base.destroy = container_destroy;
   c->vertical = vertical;
+  c->gap = (vertical ? MODULE_VGAP : MODULE_HGAP);
+  c->padding = 0;
 
   int n = 0;
   while (names && names[n])
@@ -188,9 +313,11 @@ Module *container_create(const char **names, int vertical) {
   c->children = calloc(n, sizeof(Module *));
   for (int i = 0; i < n; i++) {
     Module *mod = module_by_name(names[i]);
-    if (mod)
+    if (mod) {
       c->children[c->nchildren++] = mod;
-    else
+      if (mod->init)
+        mod->init(mod, 0, 0, 0, 0);
+    } else
       fprintf(stderr, "muhhpanel: module '%s' not found\n", names[i]);
   }
   return (Module *)c;
@@ -203,14 +330,60 @@ Module *container_create_manual(int vertical) {
   c->base.click = container_click;
   c->base.scroll = container_scroll;
   c->base.motion = container_motion;
+  c->base.key = container_key;
   c->base.timer = container_timer;
   c->base.destroy = container_destroy;
   c->vertical = vertical;
+  c->gap = (vertical ? MODULE_VGAP : MODULE_HGAP);
+  c->padding = 0;
   return (Module *)c;
+}
+
+Module *container_create_themed(const char **names, int vertical,
+                                ContainerTheme *theme) {
+  ThemedContainer *tc = calloc(1, sizeof(ThemedContainer));
+  Container *c = (Container *)tc;
+  c->base.name = "container";
+  c->base.draw = themed_container_draw;
+  c->base.click = container_click;
+  c->base.scroll = container_scroll;
+  c->base.motion = container_motion;
+  c->base.key = container_key;
+  c->base.timer = container_timer;
+  c->base.destroy = container_destroy;
+  c->vertical = vertical;
+  c->gap = MODULE_VGAP;
+  c->padding = CONTAINER_PADDING;
+  tc->theme = theme;
+
+  int n = 0;
+  while (names && names[n])
+    n++;
+  c->children = calloc(n, sizeof(Module *));
+  for (int i = 0; i < n; i++) {
+    Module *mod = module_by_name(names[i]);
+    if (mod) {
+      c->children[c->nchildren++] = mod;
+      if (mod->init)
+        mod->init(mod, 0, 0, 0, 0);
+    } else
+      fprintf(stderr, "muhhpanel: module '%s' not found\n", names[i]);
+  }
+  return (Module *)tc;
 }
 
 void container_add_child(Module *cont, Module *child) {
   Container *c = (Container *)cont;
   c->children = realloc(c->children, (c->nchildren + 1) * sizeof(Module *));
   c->children[c->nchildren++] = child;
+  if (child->init)
+    child->init(child, 0, 0, 0, 0);
+}
+
+/* ================================================================
+ *  Gap setter
+ * ================================================================ */
+void container_set_gap(Module *cont, int gap) {
+  Container *c = (Container *)cont;
+  c->gap = gap;
 }
