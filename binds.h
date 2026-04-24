@@ -58,7 +58,7 @@ static const Key keys[] = {
     {MODKEY | ShiftMask, XK_Alt_L, togglefloating, {0}},
     {MODKEY, XK_b, togglebar, {0}},
     {MODKEY | ShiftMask, XK_q, quit, {0}},
-
+    {MODKEY | ShiftMask, XK_s, togglestrip, {0}},
     /* ── navigation ─────────────────────────────────────────────────── */
     {MODKEY, XK_h, viewadjacent, {.i = -1}},
     {MODKEY, XK_l, viewadjacent, {.i = +1}},

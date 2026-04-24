@@ -56,6 +56,7 @@ static int strip_hover = 0;              /* 1 if mouse near left edge      */
 static struct timespec strip_last_write; /* for sync flash                 */
 static int strip_h = 0;                  /* height of strip window         */
 static int strip_y = 0;                  /* y position of strip window     */
+static int strip_visible = 1;            /* initially shown */
 static GC strip_gc = None;
 
 /* ── helpers ─────────────────────────────────────────────────────────────── */
@@ -392,5 +393,19 @@ void strip_click(int y, int button) {
                          NULL};
     Arg a = {.v = cmd};
     spawn(&a);
+  }
+}
+
+void strip_toggle_visibility(void) {
+  if (strip_xwin == None)
+    return;
+
+  if (strip_visible) {
+    XUnmapWindow(wm.dpy, strip_xwin);
+    strip_visible = 0;
+  } else {
+    XMapRaised(wm.dpy, strip_xwin);
+    strip_visible = 1;
+    strip_draw();
   }
 }

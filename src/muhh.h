@@ -14,6 +14,7 @@
 #include <X11/keysym.h>
 
 #include "drw.h"
+#include "topbar.h"
 #include "util.h"
 
 /* ── constants ─────────────────────────────────────────────────────────── */
@@ -279,6 +280,7 @@ void strip_set_ns(int ns);
 void strip_motion(int x, int y);
 void strip_click(int y, int button);
 int strip_window(void);
+void togglestrip(const Arg *arg);
 Window strip_win(void);
 
 #endif /* MUHH_H */

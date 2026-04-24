@@ -1,4 +1,5 @@
 #include "../common/container.h"
+#include "../common/drw.h"
 #include "../common/module.h"
 #include "../common/panel_globals.h"
 #include "../panel.h"
@@ -9,10 +10,15 @@
 static time_t last_second = 0;
 
 static void clock_init(Module *m, int x, int y, int w, int h) {
+  (void)x;
+  (void)y;
+  (void)w;
+  (void)h;
   last_second = 0;
 }
 
 static void clock_draw(Module *m, int x, int y, int w, int h, int focused) {
+  (void)focused;
   time_t now = time(NULL);
   struct tm *tm = localtime(&now);
   char time_str[16], date_str[16], day_str[16];
@@ -27,6 +33,7 @@ static void clock_draw(Module *m, int x, int y, int w, int h, int focused) {
 
   drw_setscheme(drw, scheme[0]);
   drw_rect(drw, x, y, w, h, 1, 1);
+
   drw_text(drw, x + (w - tw_time) / 2, y + h / 2 - font_h - 5, tw_time, font_h,
            0, time_str, 0);
   drw_text(drw, x + (w - tw_date) / 2, y + h / 2, tw_date, font_h, 0, date_str,
@@ -43,10 +50,16 @@ static void clock_timer(Module *m) {
   }
 }
 
+Module clock_module = {
+    .name = "clock",
+    .init = clock_init,
+    .draw = clock_draw,
+    .timer = clock_timer,
+    .destroy = NULL,
+    .priv = NULL,
+    /* no .input, .click, .scroll, .motion – not needed */
+};
+
 void __attribute__((constructor)) clock_register(void) {
-  static Module clock_mod = {.name = "clock",
-                             .init = clock_init,
-                             .draw = clock_draw,
-                             .timer = clock_timer};
-  register_module(&clock_mod);
+  register_module(&clock_module);
 }

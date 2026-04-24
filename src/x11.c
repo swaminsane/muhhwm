@@ -1346,6 +1346,7 @@ void x11_init(void) {
   XSelectInput(wm.dpy, wm.root, wa.event_mask);
   grabkeys();
   wm.running = 1;
+  topbar_init();
   x11_focus(NULL);
 }
 
@@ -1399,6 +1400,20 @@ void x11_run(void) {
     /* drain all pending X events */
     while (XPending(wm.dpy)) {
       XNextEvent(wm.dpy, &ev);
+
+      /* Let the top‑edge bar consume its own events */
+      if (top_win != None && ev.xany.window == top_win) {
+        if (topbar_handle_event(&ev))
+          continue;
+      }
+
+      if (ev.type == PropertyNotify &&
+          ev.xproperty.atom ==
+              XInternAtom(wm.dpy, "_MUHH_PANEL_VISIBLE", False)) {
+        topbar_update_visibility();
+        continue; /* event handled, no need to pass to other handlers */
+      }
+
       if (handler[ev.type])
         handler[ev.type](&ev);
     }
@@ -1770,4 +1785,9 @@ void x11_grabkeys(void) { grabkeys(); }
 void barnotes(const Arg *arg) {
   (void)arg;
   bar_notes_activate();
+}
+
+void togglestrip(const Arg *arg) {
+  (void)arg;
+  strip_toggle_visibility();
 }

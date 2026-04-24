@@ -16,5 +16,6 @@ void strip_motion(int x, int y); /* called from motionnotify for hover        */
 void strip_click(int y, int button); /* called from buttonpress on strip win  */
 int strip_window(void); /* returns 1 if w is the strip window            */
 Window strip_win(void); /* returns the strip X window                   */
+void strip_toggle_visibility(void);
 
 #endif /* STRIP_H */

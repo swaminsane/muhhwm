@@ -16,6 +16,7 @@ struct Module {
   void (*destroy)(Module *self);
   void *priv;
   int w, h;
+  int x, y; /* stored absolute position */
 };
 
 #endif

@@ -1,3 +1,9 @@
+#include "timeline.h"
+#include "../common/container.h"
+#include "../common/drw.h"
+#include "../common/module.h"
+#include "../common/panel_globals.h"
+#include "../settings.h"
 #include <X11/Xft/Xft.h>
 #include <X11/Xlib.h>
 #include <stdio.h>
@@ -5,18 +11,11 @@
 #include <string.h>
 #include <time.h>
 
-#include "../common/container.h"
-#include "../common/drw.h"
-#include "../common/module.h"
-#include "../common/panel_globals.h"
-#include "../settings.h"
-#include "timeline.h"
-
 #define STRIP_MINUTES 1440
 #define DATA_FILE_MAX 512
 
-/* Workspace colours (same as strip.c) */
-#define COL_IDLE 0x5A5A5A /* lighter grey, clearly visible on #4C566A */
+/* workspace colours */
+#define COL_IDLE 0x3D3D3D
 #define COL_STUDY 0xC0392B
 #define COL_CODE 0x2980B9
 #define COL_FREE 0x27AE60
@@ -24,8 +23,8 @@
 #define COL_CODE_B 0x3498DB
 #define COL_FREE_B 0x2ECC71
 
-/* Temporary test colour – bright red */
-#define BAR_BG 0x4C566A /* Nord bright black */
+/* timeline bar background */
+#define BAR_BG 0x4C566A
 
 static int hovered = 0;
 static unsigned char ns_data[STRIP_MINUTES];
@@ -134,7 +133,7 @@ static void tl_draw(Module *m, int x, int y, int w, int h, int focused) {
   XSetForeground(dpy, drw->gc, BAR_BG);
   XFillRectangle(dpy, drw->drawable, drw->gc, x, y, w, h);
 
-  /* 2. Minute-by-minute workspace colors */
+  /* 2. Minute‑by‑minute workspace colours */
   for (int px = 0; px < w; px++) {
     int m = (px * STRIP_MINUTES) / w;
     if (m >= STRIP_MINUTES)
@@ -144,15 +143,21 @@ static void tl_draw(Module *m, int x, int y, int w, int h, int focused) {
     XDrawLine(dpy, drw->drawable, drw->gc, x + px, y, x + px, y + h - 1);
   }
 
-  /* 3. Bright current-minute pointer (3 px wide) */
+  /* 3. Bright indicator for the last 3 minutes */
   {
-    int bright_x = (cur_min * w) / STRIP_MINUTES;
-    unsigned long bright_col = ns_color(ns_data[cur_min], 1);
-    XSetForeground(dpy, drw->gc, bright_col);
-    for (int dx = -1; dx <= 1; dx++) {
-      int bx = x + bright_x + dx;
-      if (bx >= x && bx < x + w)
-        XDrawLine(dpy, drw->drawable, drw->gc, bx, y, bx, y + h - 1);
+    int start_min = cur_min - 2;
+    if (start_min < 0)
+      start_min = 0;
+    int start_px = (start_min * w) / STRIP_MINUTES;
+    int end_px = ((cur_min + 1) * w) / STRIP_MINUTES;
+    if (end_px > w)
+      end_px = w;
+
+    for (int px = start_px; px < end_px; px++) {
+      int m = (px * STRIP_MINUTES) / w;
+      unsigned long bright_col = ns_color(ns_data[m], 1);
+      XSetForeground(dpy, drw->gc, bright_col);
+      XDrawLine(dpy, drw->drawable, drw->gc, x + px, y, x + px, y + h - 1);
     }
   }
 
@@ -169,7 +174,7 @@ static void tl_draw(Module *m, int x, int y, int w, int h, int focused) {
   XSetForeground(dpy, drw->gc, sep_col);
   XDrawLine(dpy, drw->drawable, drw->gc, x, y + h - 1, x + w - 1, y + h - 1);
 
-  /* 6. Hover numbers */
+  /* 6. Hour numbers on hover */
   if (hovered) {
     char buf[4];
     int hour_w = w / 24;
@@ -184,9 +189,20 @@ static void tl_draw(Module *m, int x, int y, int w, int h, int focused) {
   }
 }
 
+/* classic motion callback – receives absolute coordinates */
 static void tl_motion(Module *m, int x, int y) {
-  int bar_y = panel_h - TIMELINE_HEIGHT;
-  int new_hover = (y >= bar_y && y < panel_h) ? 1 : 0;
+  /* sentinel values = pointer left the panel completely */
+  if (x == -1 && y == -1) {
+    if (hovered) {
+      hovered = 0;
+      panel_redraw();
+    }
+    return;
+  }
+
+  int bar_top = m->y;
+  int bar_bottom = m->y + m->h;
+  int new_hover = (y >= bar_top && y < bar_bottom) ? 1 : 0;
   if (new_hover != hovered) {
     hovered = new_hover;
     panel_redraw();

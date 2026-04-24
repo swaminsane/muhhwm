@@ -20,6 +20,7 @@ SRC = muhhpanel.c \
       $(wildcard modules/middle/*.c) \
       $(wildcard modules/right/*.c) \
       $(wildcard modules/bottom/*.c) \
+	  $(wildcard modules/topstrip/*.c) \
       $(wildcard timeline/*.c)
 
 OBJ = $(SRC:.c=.o)

@@ -12,7 +12,9 @@
 
 #include "container.h"
 #include "drw.h"
+#include "input.h"
 #include "module.h"
+#include "modules/topstrip/topstrip.h"
 #include "panel.h"
 #include "settings.h"
 #include "timeline/timeline.h"
@@ -34,6 +36,26 @@ static int dirty = 1;
 
 Module *root_container;
 
+/* ── helper prototypes ─────────────────────────── */
+static void init_scheme(void);
+static int get_bar_height(void);
+static void update_geometry(void);
+static void move_panel(int y);
+void panel_redraw(void);
+static void show_panel(void);
+void hide_panel(void);
+static void animation_tick(void);
+static void draw_panel(void);
+static void handle_client_message(XClientMessageEvent *ev);
+static void build_layout(void);
+static void event_loop(void);
+
+void panel_hide(void) {
+  if (panel_shown)
+    hide_panel();
+}
+
+/* ── color scheme ─────────────────────────────── */
 static void init_scheme(void) {
   scheme = ecalloc(LENGTH(panel_colors), sizeof(Clr *));
   for (size_t i = 0; i < LENGTH(panel_colors); i++)
@@ -83,6 +105,12 @@ static void show_panel(void) {
   XMapWindow(dpy, panel_win);
   XRaiseWindow(dpy, panel_win);
   XSetInputFocus(dpy, panel_win, RevertToPointerRoot, CurrentTime);
+
+  Atom visible = XInternAtom(dpy, "_MUHH_PANEL_VISIBLE", False);
+  unsigned long data = 1;
+  XChangeProperty(dpy, root, visible, XA_CARDINAL, 32, PropModeReplace,
+                  (unsigned char *)&data, 1);
+
   XGrabButton(dpy, AnyButton, AnyModifier, root, True, ButtonPressMask,
               GrabModeAsync, GrabModeAsync, None, None);
   animating = 1;
@@ -92,10 +120,16 @@ static void show_panel(void) {
   move_panel(panel_y);
 }
 
-static void hide_panel(void) {
+void hide_panel(void) {
   if (!panel_shown)
     return;
   panel_shown = 0;
+
+  Atom visible = XInternAtom(dpy, "_MUHH_PANEL_VISIBLE", False);
+  unsigned long data = 0;
+  XChangeProperty(dpy, root, visible, XA_CARDINAL, 32, PropModeReplace,
+                  (unsigned char *)&data, 1);
+
   XUngrabButton(dpy, AnyButton, AnyModifier, root);
   animating = 1;
   anim_step = 0;
@@ -144,34 +178,26 @@ static void handle_client_message(XClientMessageEvent *ev) {
   }
 }
 
-/* ── Row‑based layout engine ─────────────────────── */
+/* ── build full layout (now using container_layout) ─────── */
 static void build_layout(void) {
-  /* first pass: sum fixed heights and total percentage weights */
   int fixed_sum = 0;
   int pct_sum = 0;
-  for (int r = 0; r < NUM_ROWS; r++) {
+  for (size_t r = 0; r < NUM_ROWS; r++) {
     int hpct = layout_rows[r].height_pct;
     if (hpct < 0)
       fixed_sum += -hpct;
     else
       pct_sum += hpct;
   }
-
-  /* height remaining for percentage rows */
   int remaining_h = panel_h - fixed_sum;
   if (remaining_h < 0)
     remaining_h = 0;
 
   Module *root_vert = container_create_manual(1);
 
-  for (int r = 0; r < NUM_ROWS; r++) {
+  for (size_t r = 0; r < NUM_ROWS; r++) {
     int hpct = layout_rows[r].height_pct;
-    int row_h;
-    if (hpct < 0) {
-      row_h = -hpct; /* fixed pixels */
-    } else {
-      row_h = (remaining_h * hpct) / pct_sum; /* proportional */
-    }
+    int row_h = (hpct < 0) ? -hpct : (remaining_h * hpct) / pct_sum;
 
     Module *row_horiz = container_create_manual(0);
     row_horiz->h = row_h;
@@ -179,16 +205,17 @@ static void build_layout(void) {
     for (int c = 0; c < 4 && layout_rows[r].col_widths[c] > 0; c++) {
       int col_w = (panel_w * layout_rows[r].col_widths[c]) / 100;
       const char **modlist = layout_rows[r].col_modules[c];
-      Module *col = container_create(modlist, 0, 0, col_w, row_h, 1);
+      Module *col = container_create(modlist, 1);
       col->w = col_w;
       container_add_child(row_horiz, col);
     }
     container_add_child(root_vert, row_horiz);
   }
   root_container = root_vert;
+  container_layout(root_container, 0, 0, panel_w, panel_h);
 }
 
-/* ── Event loop ──────────────────────────────────── */
+/* ── event loop ────────────────────────────────── */
 static void event_loop(void) {
   XEvent ev;
   int xfd = ConnectionNumber(dpy);
@@ -227,6 +254,7 @@ static void event_loop(void) {
       clock_gettime(CLOCK_MONOTONIC, &anim_ts);
     }
 
+    /* coarse 1‑second timer */
     {
       static time_t last_timer = 0;
       time_t now = time(NULL);
@@ -247,20 +275,37 @@ static void event_loop(void) {
         if (ev.xexpose.count == 0)
           dirty = 1;
         break;
+
       case ButtonPress:
         if (!panel_shown)
           break;
-        if (ev.xbutton.x_root < panel_x ||
-            ev.xbutton.x_root >= panel_x + panel_w || ev.xbutton.y_root < 0 ||
-            ev.xbutton.y_root >= panel_h) {
+
+        /* scroll‑wheel / two‑finger scroll */
+        if (ev.xbutton.button == Button4 || ev.xbutton.button == Button5) {
+          int dir = (ev.xbutton.button == Button4) ? 1 : -1;
+          if (root_container && root_container->scroll)
+            root_container->scroll(root_container, ev.xbutton.x, ev.xbutton.y,
+                                   dir);
+          break;
+        }
+
+        /* outside click (buttons 1‑3) → hide panel */
+        if ((ev.xbutton.button == Button1 || ev.xbutton.button == Button2 ||
+             ev.xbutton.button == Button3) &&
+            (ev.xbutton.x_root < panel_x ||
+             ev.xbutton.x_root >= panel_x + panel_w || ev.xbutton.y_root < 0 ||
+             ev.xbutton.y_root >= panel_h)) {
           hide_panel();
           break;
         }
+
+        /* inside panel: forward to modules */
         if (ev.xbutton.window == panel_win && root_container &&
             root_container->click)
           root_container->click(root_container, ev.xbutton.x, ev.xbutton.y,
                                 ev.xbutton.button);
         break;
+
       case MotionNotify:
         if (!panel_shown)
           break;
@@ -268,6 +313,16 @@ static void event_loop(void) {
             root_container->motion)
           root_container->motion(root_container, ev.xmotion.x, ev.xmotion.y);
         break;
+
+      case LeaveNotify:
+        if (!panel_shown)
+          break;
+        /* signal all modules that the pointer left the panel */
+        if (ev.xcrossing.window == panel_win && root_container &&
+            root_container->motion)
+          root_container->motion(root_container, -1, -1);
+        break;
+
       case KeyPress:
         if (!panel_shown)
           break;
@@ -277,6 +332,7 @@ static void event_loop(void) {
             hide_panel();
             break;
           }
+          /* future: forward other keys to modules via a 'key' callback */
         }
         break;
       }
@@ -321,6 +377,7 @@ int main(void) {
   XFlush(dpy);
 
   timeline_register();
+  topstrip_register();
   build_layout();
   event_loop();
   return 0;

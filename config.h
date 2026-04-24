@@ -68,6 +68,14 @@ static const Rule rules[] = {
     /* empty — windows open on active namespace/tag */
 };
 
+/* top-edge interactive bar */
+static const int top_edge_zone = 4;               /* idle height (px) */
+static const int top_edge_expanded = 20;          /* hover height (px) */
+static const int top_edge_bg = 0x1a1b26;          /* thin bar background */
+static const int top_edge_expanded_bg = 0x2e3440; /* expanded background */
+static const int island_bg = 0x88c0d0;            /* island accent */
+static const int top_edge_text_color = 0xd8dee9;  /* text foreground */
+
 /* ── bindings ───────────────────────────────────────────────────────────── */
 
 #include "binds.h"

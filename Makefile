@@ -27,6 +27,7 @@ SRC = src/muhh.c \
 	  src/activity.c \
 	  src/strip.c \
       src/drw.c \
+	  src/topbar.c \
       src/util.c
 
 OBJ = $(SRC:.c=.o)
