@@ -365,7 +365,7 @@ static void event_loop(void) {
       case LeaveNotify:
         if (!panel_shown)
           break;
-        /* signal all modules that the pointer left the panel */
+        /* sentinel values – tell every module the pointer left the panel */
         if (ev.xcrossing.window == panel_win && root_container &&
             root_container->motion)
           root_container->motion(root_container, -1, -1);

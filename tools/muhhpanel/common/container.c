@@ -305,16 +305,8 @@ static void container_motion(Module *self, int x, int y) {
     Module *ch = c->children[i];
     if (!ch->motion)
       continue;
-
-    int cx = ch->x + ch->margin_left;
-    int cy = ch->y + ch->margin_top;
-    int cw = ch->w - ch->margin_left - ch->margin_right;
-    int ch2 = ch->h - ch->margin_top - ch->margin_bottom;
-
-    if (x >= cx && x < cx + cw && y >= cy && y < cy + ch2) {
-      ch->motion(ch, x, y); /* absolute coordinates for motion */
-      return;
-    }
+    /* pass absolute coordinates to every child */
+    ch->motion(ch, x, y);
   }
 }
 

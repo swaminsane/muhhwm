@@ -191,7 +191,7 @@ static void tl_draw(Module *m, int x, int y, int w, int h, int focused) {
 
 /* classic motion callback – receives absolute coordinates */
 static void tl_motion(Module *m, int x, int y) {
-  /* sentinel values = pointer left the panel completely */
+  /* sentinel: mouse left the panel completely */
   if (x == -1 && y == -1) {
     if (hovered) {
       hovered = 0;
@@ -209,13 +209,19 @@ static void tl_motion(Module *m, int x, int y) {
   }
 }
 
+static void tl_timer(Module *m) {
+  (void)m;
+  ensure_data_fresh();
+  panel_redraw();
+}
+
 Module timeline_module = {
     .name = "timeline",
     .init = tl_init,
     .draw = tl_draw,
     .click = NULL,
     .scroll = NULL,
-    .timer = NULL,
+    .timer = tl_timer,
     .motion = tl_motion,
     .destroy = NULL,
     .priv = NULL,

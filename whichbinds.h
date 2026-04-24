@@ -88,6 +88,8 @@ static WhichKey wk_settings[] = {
     WK_LEAF('t', "theme", "$HOME/.local/bin/menu/themenu"),
     WK_LEAF('f', "font", "$HOME/.local/bin/menu/fontmenu"),
     WK_LEAF('m', "muhhwm", "st -e nvim $HOME/.local/src/muhhwm/"),
+    WK_LEAF('w', "wi-fi", "connectmenu --wifi"),
+    WK_LEAF('b', "bluetooth", "connectmenu --bluetooth"),
 };
 
 static WhichKey wk_system[] = {
