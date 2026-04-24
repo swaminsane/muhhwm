@@ -48,6 +48,9 @@ static void container_draw(Module *self, int x, int y, int w, int h,
                            int focused);
 static void themed_container_draw(Module *self, int x, int y, int w, int h,
                                   int focused);
+static void container_click(Module *self, int x, int y, int btn);
+static void container_scroll(Module *self, int x, int y, int dir);
+static void container_motion(Module *self, int x, int y);
 
 /* ================================================================
  *  Theme variables (defined here, declared in panel.h)
@@ -88,7 +91,7 @@ void module_set_hints(Module *m, int pref_w, int pref_h, int expand_x,
   h->weight_x = weight_x;
   h->weight_y = weight_y;
   m->priv = h;
-  m->get_hints = module_default_hints; /* auto‑configure */
+  m->get_hints = module_default_hints;
 }
 
 /* ================================================================
@@ -190,21 +193,41 @@ void container_layout(Module *self, int x, int y, int w, int h) {
 }
 
 /* ================================================================
- *  Drawing
+ *  Drawing (honours per‑module margins)
  * ================================================================ */
 static void container_draw(Module *self, int x, int y, int w, int h,
                            int focused) {
+  (void)x;
+  (void)y;
+  (void)w;
+  (void)h;
+  (void)focused;
   Container *c = (Container *)self;
   for (int i = 0; i < c->nchildren; i++) {
     Module *ch = c->children[i];
     if (!ch->draw)
       continue;
-    ch->draw(ch, ch->x, ch->y, ch->w, ch->h, 0);
+
+    int cx = ch->x + ch->margin_left;
+    int cy = ch->y + ch->margin_top;
+    int cw = ch->w - ch->margin_left - ch->margin_right;
+    int ch2 = ch->h - ch->margin_top - ch->margin_bottom;
+    if (cw < 1)
+      cw = 1;
+    if (ch2 < 1)
+      ch2 = 1;
+
+    ch->draw(ch, cx, cy, cw, ch2, 0);
   }
 }
 
 static void themed_container_draw(Module *self, int x, int y, int w, int h,
                                   int focused) {
+  (void)x;
+  (void)y;
+  (void)w;
+  (void)h;
+  (void)focused;
   ThemedContainer *tc = (ThemedContainer *)self;
   if (tc->theme) {
     XSetForeground(dpy, drw->gc, tc->theme->bg);
@@ -221,12 +244,22 @@ static void themed_container_draw(Module *self, int x, int y, int w, int h,
     Module *ch = c->children[i];
     if (!ch->draw)
       continue;
-    ch->draw(ch, ch->x, ch->y, ch->w, ch->h, 0);
+
+    int cx = ch->x + ch->margin_left;
+    int cy = ch->y + ch->margin_top;
+    int cw = ch->w - ch->margin_left - ch->margin_right;
+    int ch2 = ch->h - ch->margin_top - ch->margin_bottom;
+    if (cw < 1)
+      cw = 1;
+    if (ch2 < 1)
+      ch2 = 1;
+
+    ch->draw(ch, cx, cy, cw, ch2, 0);
   }
 }
 
 /* ================================================================
- *  Input forwarders (use stored positions)
+ *  Input forwarders (honour per‑module margins)
  * ================================================================ */
 static void container_click(Module *self, int x, int y, int btn) {
   Container *c = (Container *)self;
@@ -234,8 +267,14 @@ static void container_click(Module *self, int x, int y, int btn) {
     Module *ch = c->children[i];
     if (!ch->click)
       continue;
-    if (x >= ch->x && x < ch->x + ch->w && y >= ch->y && y < ch->y + ch->h) {
-      ch->click(ch, x - ch->x, y - ch->y, btn);
+
+    int cx = ch->x + ch->margin_left;
+    int cy = ch->y + ch->margin_top;
+    int cw = ch->w - ch->margin_left - ch->margin_right;
+    int ch2 = ch->h - ch->margin_top - ch->margin_bottom;
+
+    if (x >= cx && x < cx + cw && y >= cy && y < cy + ch2) {
+      ch->click(ch, x - cx, y - cy, btn);
       return;
     }
   }
@@ -247,8 +286,14 @@ static void container_scroll(Module *self, int x, int y, int dir) {
     Module *ch = c->children[i];
     if (!ch->scroll)
       continue;
-    if (x >= ch->x && x < ch->x + ch->w && y >= ch->y && y < ch->y + ch->h) {
-      ch->scroll(ch, x - ch->x, y - ch->y, dir);
+
+    int cx = ch->x + ch->margin_left;
+    int cy = ch->y + ch->margin_top;
+    int cw = ch->w - ch->margin_left - ch->margin_right;
+    int ch2 = ch->h - ch->margin_top - ch->margin_bottom;
+
+    if (x >= cx && x < cx + cw && y >= cy && y < cy + ch2) {
+      ch->scroll(ch, x - cx, y - cy, dir);
       return;
     }
   }
@@ -260,8 +305,14 @@ static void container_motion(Module *self, int x, int y) {
     Module *ch = c->children[i];
     if (!ch->motion)
       continue;
-    if (x >= ch->x && x < ch->x + ch->w && y >= ch->y && y < ch->y + ch->h) {
-      ch->motion(ch, x, y);
+
+    int cx = ch->x + ch->margin_left;
+    int cy = ch->y + ch->margin_top;
+    int cw = ch->w - ch->margin_left - ch->margin_right;
+    int ch2 = ch->h - ch->margin_top - ch->margin_bottom;
+
+    if (x >= cx && x < cx + cw && y >= cy && y < cy + ch2) {
+      ch->motion(ch, x, y); /* absolute coordinates for motion */
       return;
     }
   }

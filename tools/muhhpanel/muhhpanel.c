@@ -54,7 +54,6 @@ void panel_hide(void) {
   if (panel_shown)
     hide_panel();
 }
-
 /* ── color scheme ─────────────────────────────── */
 static void init_scheme(void) {
   scheme = ecalloc(LENGTH(panel_colors), sizeof(Clr *));
@@ -189,7 +188,6 @@ static void build_layout(void) {
     Module *row = container_create_manual(0);
     container_set_gap(row, MODULE_HGAP);
 
-    /* row height hint */
     if (hpct < 0)
       module_set_hints(row, 0, -hpct, 0, 0, 0, 0);
     else
@@ -201,13 +199,62 @@ static void build_layout(void) {
       const char **modlist = layout_rows[r].col_modules[c];
       Module *col;
 
-      if (r == 1 && c == 2)
-        col =
-            container_create_themed(modlist, 1, (ContainerTheme *)&right_theme);
-      else
-        col = container_create(modlist, 1);
+      if (r == 1 && c == 2) {
+        /* Right column – custom nested layout */
+        col = container_create_themed(NULL, 1, (ContainerTheme *)&right_theme);
+        module_set_hints(col, 0, 0, 1, 1, (float)layout_rows[r].col_widths[c],
+                         1);
 
-      module_set_hints(col, 0, 0, 1, 1, (float)layout_rows[r].col_widths[c], 1);
+        /* 1. Clock (full width) */
+        Module *clock_col = container_create(right_clock_list, 1);
+        container_add_child(col, clock_col);
+
+        /* 2. WiFi + Bluetooth grid (2 columns) */
+        Module *grid2 = container_create_manual(0);
+        container_set_gap(grid2, MODULE_HGAP);
+        Module *wifi_tile = container_create((const char *[]){"wifi", NULL}, 1);
+        Module *bt_tile =
+            container_create((const char *[]){"bluetooth", NULL}, 1);
+        module_set_hints(wifi_tile, 0, 0, 1, 0, 1.0f, 0);
+        module_set_hints(bt_tile, 0, 0, 1, 0, 1.0f, 0);
+        container_add_child(grid2, wifi_tile);
+        container_add_child(grid2, bt_tile);
+        container_add_child(col, grid2);
+
+        /* 3. Volume (full width) */
+        Module *vol_col = container_create(right_vol_list, 1);
+        container_add_child(col, vol_col);
+
+        /* 4. Brightness (full width) */
+        Module *bri_col = container_create(right_bri_list, 1);
+        container_add_child(col, bri_col);
+
+        /* 5. KDE + CPU + Screenshot grid (3 columns) */
+        Module *grid3 = container_create_manual(0);
+        container_set_gap(grid3, MODULE_HGAP);
+        Module *kde_tile =
+            container_create((const char *[]){"kde_connect", NULL}, 1);
+        Module *cpu_tile =
+            container_create((const char *[]){"cpu_governor", NULL}, 1);
+        Module *scr_tile =
+            container_create((const char *[]){"screenshot", NULL}, 1);
+        module_set_hints(kde_tile, 0, 0, 1, 0, 1.0f, 0);
+        module_set_hints(cpu_tile, 0, 0, 1, 0, 1.0f, 0);
+        module_set_hints(scr_tile, 0, 0, 1, 0, 1.0f, 0);
+        container_add_child(grid3, kde_tile);
+        container_add_child(grid3, cpu_tile);
+        container_add_child(grid3, scr_tile);
+        container_add_child(col, grid3);
+
+        /* 6. Power (full width) */
+        Module *power_col = container_create(right_power_list, 1);
+        container_add_child(col, power_col);
+      } else {
+        col = container_create(modlist, 1);
+        module_set_hints(col, 0, 0, 1, 1, (float)layout_rows[r].col_widths[c],
+                         1);
+      }
+
       container_add_child(row, col);
     }
   }
@@ -380,6 +427,9 @@ int main(void) {
 
   timeline_register();
   topstrip_register();
+  timeline_register();
+  topstrip_register();
+  build_layout();
   build_layout();
   event_loop();
   return 0;

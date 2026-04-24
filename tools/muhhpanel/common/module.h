@@ -25,6 +25,10 @@ struct Module {
   void (*key)(Module *self, int keycode, unsigned int state);
   void (*destroy)(Module *self);
   ContainerTheme *theme;
+  int margin_top;
+  int margin_right;
+  int margin_bottom;
+  int margin_left;
   LayoutHints *(*get_hints)(Module *self);
   void *priv;
   int w, h, x, y;

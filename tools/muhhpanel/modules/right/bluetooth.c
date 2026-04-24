@@ -6,14 +6,14 @@
 #include "../../settings.h"
 #include <X11/Xlib.h>
 
-static void wifi_init(Module *m, int x, int y, int w, int h) {
+static void btp_init(Module *m, int x, int y, int w, int h) {
   (void)x;
   (void)y;
   m->w = w;
   m->h = h;
 }
 
-static void wifi_draw(Module *m, int x, int y, int w, int h, int focused) {
+static void btp_draw(Module *m, int x, int y, int w, int h, int focused) {
   /* card background */
   if (m->theme) {
     XSetForeground(dpy, drw->gc, m->theme->bg);
@@ -28,16 +28,16 @@ static void wifi_draw(Module *m, int x, int y, int w, int h, int focused) {
 
   int pad = MODULE_PADDING;
   int font_h = drw->fonts->h;
-  const char *label = "~sn";
+  const char *label = "BT";
   int tw = drw_fontset_getwidth(drw, label);
   drw_setscheme(drw, scheme[0]);
   drw_text(drw, x + pad, y + (h - font_h) / 2, tw, font_h, 0, label, 0);
 }
 
-Module wifi_module = {
-    .name = "wifi",
-    .init = wifi_init,
-    .draw = wifi_draw,
+Module bluetooth_module = {
+    .name = "bluetooth",
+    .init = btp_init,
+    .draw = btp_draw,
     .theme = (ContainerTheme *)&module_card_theme,
     .margin_top = 8,
     .margin_right = 8,
@@ -46,6 +46,6 @@ Module wifi_module = {
     .priv = NULL,
 };
 
-void __attribute__((constructor)) wifi_register(void) {
-  register_module(&wifi_module);
+void __attribute__((constructor)) bluetooth_register(void) {
+  register_module(&bluetooth_module);
 }

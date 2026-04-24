@@ -17,6 +17,7 @@
 #define MODULE_VGAP 6
 #define MODULE_HGAP 12
 #define CONTAINER_PADDING 4
+#define RIGHT_COLUMN_PADDING 12
 
 /* ─── module update intervals (seconds) ──────── */
 #define CLOCK_UPDATE_IV 1

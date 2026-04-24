@@ -6,15 +6,13 @@
 #include "../../settings.h"
 #include <X11/Xlib.h>
 
-static void wifi_init(Module *m, int x, int y, int w, int h) {
+static void texts_init(Module *m, int x, int y, int w, int h) {
   (void)x;
   (void)y;
   m->w = w;
   m->h = h;
 }
-
-static void wifi_draw(Module *m, int x, int y, int w, int h, int focused) {
-  /* card background */
+static void texts_draw(Module *m, int x, int y, int w, int h, int focused) {
   if (m->theme) {
     XSetForeground(dpy, drw->gc, m->theme->bg);
     XFillRectangle(dpy, drw->drawable, drw->gc, x, y, w, h);
@@ -25,27 +23,22 @@ static void wifi_draw(Module *m, int x, int y, int w, int h, int focused) {
                        h - 1 - 2 * i);
     }
   }
-
-  int pad = MODULE_PADDING;
-  int font_h = drw->fonts->h;
-  const char *label = "~sn";
+  int pad = MODULE_PADDING, font_h = drw->fonts->h;
+  const char *label = "Textsmenu";
   int tw = drw_fontset_getwidth(drw, label);
   drw_setscheme(drw, scheme[0]);
   drw_text(drw, x + pad, y + (h - font_h) / 2, tw, font_h, 0, label, 0);
 }
-
-Module wifi_module = {
-    .name = "wifi",
-    .init = wifi_init,
-    .draw = wifi_draw,
+Module textsmenu_module = {
+    .name = "textsmenu",
+    .init = texts_init,
+    .draw = texts_draw,
     .theme = (ContainerTheme *)&module_card_theme,
     .margin_top = 8,
     .margin_right = 8,
     .margin_bottom = 8,
     .margin_left = 8,
-    .priv = NULL,
 };
-
-void __attribute__((constructor)) wifi_register(void) {
-  register_module(&wifi_module);
+void __attribute__((constructor)) textsmenu_register(void) {
+  register_module(&textsmenu_module);
 }
