@@ -17,6 +17,7 @@
 #include "module.h"
 #include "panel.h"
 #include "settings.h"
+#include "timeline/timeline.h"
 #include "util.h"
 
 /* ── globals (shared with modules) ──────────────── */
@@ -183,90 +184,15 @@ static void handle_client_message(XClientMessageEvent *ev) {
   }
 }
 
-/* ── layout builder ─────────────────────────────── */
+/* ── layout builder (declarative tree) ──────────── */
 static void build_layout(void) {
-  Module *root = container_create_manual(1);
-  container_set_gap(root, MODULE_VGAP);
-
-  for (size_t r = 0; r < NUM_ROWS; r++) {
-    int hpct = layout_rows[r].height_pct;
-
-    Module *row = container_create_manual(0);
-    container_set_gap(row, MODULE_HGAP);
-
-    /* row height hint */
-    if (hpct < 0)
-      module_set_hints(row, 0, -hpct, 0, 0, 0, 0);
-    else
-      module_set_hints(row, 0, 0, 0, 1, 0, (float)hpct);
-
-    container_add_child(root, row);
-
-    for (int c = 0; c < 4 && layout_rows[r].col_widths[c] > 0; c++) {
-      const char **modlist = layout_rows[r].col_modules[c];
-      Module *col;
-
-      if (r == 1 && c == 2) {
-        /* Right column – custom nested layout */
-        col = container_create_themed(NULL, 1, (ContainerTheme *)&right_theme);
-        module_set_hints(col, 0, 0, 1, 1, (float)layout_rows[r].col_widths[c],
-                         1);
-
-        /* clock */
-        Module *clock_col = container_create(right_clock_col, 1);
-        container_add_child(col, clock_col);
-
-        /* wifi + bt grid */
-        Module *grid2 = container_create_manual(0);
-        container_set_gap(grid2, MODULE_HGAP);
-        Module *wifi_tile = container_create((const char *[]){"wifi", NULL}, 1);
-        Module *bt_tile =
-            container_create((const char *[]){"bluetooth", NULL}, 1);
-        module_set_hints(wifi_tile, 0, 0, 1, 0, 1.0f, 0);
-        module_set_hints(bt_tile, 0, 0, 1, 0, 1.0f, 0);
-        container_add_child(grid2, wifi_tile);
-        container_add_child(grid2, bt_tile);
-        container_add_child(col, grid2);
-
-        /* volume */
-        Module *vol_col = container_create(right_vol_col, 1);
-        container_add_child(col, vol_col);
-
-        /* brightness */
-        Module *bri_col = container_create(right_bri_col, 1);
-        container_add_child(col, bri_col);
-
-        /* kde + cpu + screenshot grid */
-        Module *grid3 = container_create_manual(0);
-        container_set_gap(grid3, MODULE_HGAP);
-        Module *kde_tile =
-            container_create((const char *[]){"kde_connect", NULL}, 1);
-        Module *cpu_tile =
-            container_create((const char *[]){"cpu_governor", NULL}, 1);
-        Module *scr_tile =
-            container_create((const char *[]){"screenshot", NULL}, 1);
-        module_set_hints(kde_tile, 0, 0, 1, 0, 1.0f, 0);
-        module_set_hints(cpu_tile, 0, 0, 1, 0, 1.0f, 0);
-        module_set_hints(scr_tile, 0, 0, 1, 0, 1.0f, 0);
-        container_add_child(grid3, kde_tile);
-        container_add_child(grid3, cpu_tile);
-        container_add_child(grid3, scr_tile);
-        container_add_child(col, grid3);
-
-        /* power */
-        Module *power_col = container_create(right_power_col, 1);
-        container_add_child(col, power_col);
-      } else {
-        col = container_create(modlist, 1);
-        module_set_hints(col, 0, 0, 1, 1, (float)layout_rows[r].col_widths[c],
-                         1);
-      }
-
-      container_add_child(row, col);
-    }
+  /* the tree is defined in panel.h as `layout_tree` */
+  extern LayoutNode layout_tree; /* single global tree */
+  root_container = container_build_tree(&layout_tree);
+  if (!root_container) {
+    fprintf(stderr, "muhhpanl: failed to build layout tree\n");
+    exit(1);
   }
-
-  root_container = root;
   container_layout(root_container, 0, 0, panel_w, panel_h);
 }
 
@@ -399,8 +325,9 @@ int main(void) {
                   (unsigned char *)&panel_win, 1);
   XFlush(dpy);
 
-  /* register modules (timeline, topstrip will be added via their source files)
-   */
+  /* register modules that aren't auto‑registered */
+  timeline_register();
+
   build_layout();
   event_loop();
   return 0;

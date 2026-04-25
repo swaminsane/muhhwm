@@ -1,33 +1,11 @@
 #ifndef INPUT_H
 #define INPUT_H
 
+#include "module.h" /* for InputEvent, EventType */
 #include <X11/Xlib.h>
 
-typedef enum {
-  EV_PRESS,
-  EV_RELEASE,
-  EV_SCROLL,
-  EV_MOTION,
-  EV_ENTER,
-  EV_LEAVE,
-  EV_KEY_PRESS,
-  EV_KEY_RELEASE,
-} EventType;
-
-typedef struct InputEvent {
-  EventType type;
-
-  int x, y;
-  int root_x, root_y;
-
-  unsigned int button;
-
-  int scroll_dx, scroll_dy;
-
-  unsigned int keycode;
-  unsigned int state;
-} InputEvent;
-
+/* Translate a raw X11 event into the unified InputEvent format.
+ * Returns 1 if the event was translated, 0 if it should be ignored. */
 int translate_event(XEvent *xev, InputEvent *iev);
 
 #endif

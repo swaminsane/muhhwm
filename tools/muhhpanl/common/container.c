@@ -1,9 +1,9 @@
 #include "container.h"
 #include "../../colors.h"
-#include "../panel.h"
-#include "../settings.h"
 #include "input.h"
+#include "panel.h"
 #include "panel_globals.h"
+#include "settings.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -81,8 +81,28 @@ void module_set_hints(Module *m, int pref_w, int pref_h, int expand_x,
   h->expand_y = expand_y;
   h->weight_x = weight_x;
   h->weight_y = weight_y;
-  m->priv = h;                         /* stored in priv for now */
-  m->get_hints = module_default_hints; /* auto‑configure callback */
+  m->priv = h;
+  m->get_hints = module_default_hints;
+}
+
+/* ================================================================
+ *  Default hints – guaranteed minimum sizes for everything
+ * ================================================================ */
+static LayoutHints default_hints = {.min_h = 20,
+                                    .min_w = 20,
+                                    .expand_x = 1,
+                                    .expand_y = 1,
+                                    .weight_x = 1.0f,
+                                    .weight_y = 1.0f};
+
+static LayoutHints *get_default_hints(Module *m) {
+  (void)m;
+  return &default_hints;
+}
+
+static void ensure_hints(Module *m) {
+  if (!m->get_hints)
+    m->get_hints = get_default_hints;
 }
 
 /* ================================================================
@@ -118,7 +138,7 @@ static void layout_instance(Container *c, int x, int y, int w, int h) {
         pref[i] = hints->pref_h;
         total_pref += pref[i];
       }
-      exp[i] = hints ? hints->expand_y : 0; /* default: don't expand */
+      exp[i] = hints ? hints->expand_y : 0;
       weight[i] = (hints && hints->weight_y > 0) ? hints->weight_y : 1.0f;
     } else {
       if (hints && hints->pref_w > 0) {
@@ -142,18 +162,17 @@ static void layout_instance(Container *c, int x, int y, int w, int h) {
   for (int i = 0; i < c->nchildren; i++) {
     Module *ch = c->children[i];
     int size = pref[i] > 0 ? pref[i] : 1;
-    if (pref[i] == 0 && expand_count > 0 && total_weight > 0) {
+    if (pref[i] == 0 && expand_count > 0 && total_weight > 0)
       size = (int)(available * (weight[i] / total_weight));
-    }
     if (size < 1)
       size = 1;
 
     /* min / max clamping */
     LayoutHints *hints = ch->get_hints ? ch->get_hints(ch) : NULL;
     if (hints) {
-      int axis = c->vertical ? hints->min_h : hints->min_w;
-      if (axis > 0 && size < axis)
-        size = axis;
+      int min_axis = c->vertical ? hints->min_h : hints->min_w;
+      if (min_axis > 0 && size < min_axis)
+        size = min_axis;
       int max_axis = c->vertical ? hints->max_h : hints->max_w;
       if (max_axis > 0 && size > max_axis)
         size = max_axis;
@@ -277,8 +296,6 @@ static void container_input(Module *self, const InputEvent *ev) {
       InputEvent local = *ev;
       local.x = ev->root_x - cx;
       local.y = ev->root_y - cy;
-      local.root_x = ev->root_x; /* preserve absolute coords if needed */
-      local.root_y = ev->root_y;
       ch->input(ch, &local);
       return;
     }
@@ -305,7 +322,6 @@ static void container_destroy(Module *self) {
     if (ch->destroy)
       ch->destroy(ch);
     else {
-      /* free hints that were allocated by module_set_hints */
       if (ch->get_hints == module_default_hints && ch->priv)
         free(ch->priv);
     }
@@ -342,6 +358,7 @@ Module *container_create(const char **names, int vertical) {
     } else
       fprintf(stderr, "muhhpanl: module '%s' not found\n", names[i]);
   }
+  ensure_hints(&c->base);
   return (Module *)c;
 }
 
@@ -356,7 +373,25 @@ Module *container_create_manual(int vertical) {
   c->vertical = vertical;
   c->gap = (vertical ? MODULE_VGAP : MODULE_HGAP);
   c->padding = 0;
+  ensure_hints(&c->base);
   return (Module *)c;
+}
+
+Module *container_create_manual_themed(int vertical, ContainerTheme *theme) {
+  ThemedContainer *tc = calloc(1, sizeof(ThemedContainer));
+  Container *c = (Container *)tc;
+  c->base.name = "container";
+  c->base.is_container = 1;
+  c->base.draw = themed_container_draw;
+  c->base.input = container_input;
+  c->base.timer = container_timer;
+  c->base.destroy = container_destroy;
+  c->vertical = vertical;
+  c->gap = (vertical ? MODULE_VGAP : MODULE_HGAP);
+  c->padding = CONTAINER_PADDING;
+  tc->theme = theme;
+  ensure_hints(&c->base);
+  return (Module *)tc;
 }
 
 Module *container_create_themed(const char **names, int vertical,
@@ -387,6 +422,7 @@ Module *container_create_themed(const char **names, int vertical,
     } else
       fprintf(stderr, "muhhpanl: module '%s' not found\n", names[i]);
   }
+  ensure_hints(&c->base);
   return (Module *)tc;
 }
 
@@ -398,7 +434,7 @@ void container_add_child(Module *cont, Module *child) {
     child->init(child, 0, 0, 0, 0);
 }
 
-/* ---------- configuration helpers ---------- */
+/* ── configuration helpers ── */
 void container_set_gap(Module *cont, int gap) {
   Container *c = (Container *)cont;
   c->gap = gap;
@@ -407,4 +443,55 @@ void container_set_gap(Module *cont, int gap) {
 void container_set_padding(Module *cont, int pad) {
   Container *c = (Container *)cont;
   c->padding = pad;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+ *  DECLARATIVE TREE BUILDER
+q* ═══════════════════════════════════════════════════════════════ */
+Module *container_build_tree(LayoutNode *node) {
+  if (!node)
+    return NULL;
+
+  switch (node->type) {
+  case LAYOUT_MODULE: {
+    const char *names[] = {node->module_name, NULL};
+    if (node->theme)
+      return container_create_themed(names, 1, node->theme);
+    else
+      return container_create(names, 1);
+  }
+
+  case LAYOUT_ROW:
+  case LAYOUT_COL: {
+    int vertical = (node->type == LAYOUT_COL);
+    Module *cont;
+    if (node->theme)
+      cont = container_create_manual_themed(vertical, node->theme);
+    else
+      cont = container_create_manual(vertical);
+
+    for (int i = 0; i < node->nchildren; i++) {
+      LayoutNode *child_node = &node->children[i];
+      Module *child = container_build_tree(child_node);
+      if (child) {
+        /* apply weight / fixed size from the node */
+        if (child_node->fixed_px > 0) {
+          if (vertical)
+            module_set_hints(child, 0, child_node->fixed_px, 0, 0, 0, 0);
+          else
+            module_set_hints(child, child_node->fixed_px, 0, 0, 0, 0, 0);
+        } else {
+          float w = child_node->weight > 0 ? child_node->weight : 1.0f;
+          module_set_hints(child, 0, 0, 1, 1, w, w);
+        }
+        container_add_child(cont, child);
+      }
+    }
+    ensure_hints(cont);
+    return cont;
+  }
+
+  default:
+    return NULL;
+  }
 }

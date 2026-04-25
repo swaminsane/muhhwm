@@ -8,6 +8,7 @@
 /* ─── spacing ─────────────────────────────────── */
 #define MODULE_VGAP 6
 #define MODULE_HGAP 12
+#define MODULE_PADDING 4
 #define CONTAINER_PADDING 4
 
 /* ─── update intervals (seconds) ──────────────── */
