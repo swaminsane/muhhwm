@@ -32,6 +32,9 @@
 #define TEMP_STEP 100
 #define GOVERNOR_CYCLE "performance ondemand powersave"
 #define SCREENSHOT_DIR "/redmi/DCIM/Screenshots/linux"
+#define MPVSEARCH_HISTORY_MAX 100
+#define MPVSEARCH_HISTORY_FILE "$HOME/.cache/muhhwm/mpvsearch_history"
+#define MPV_YOUTUBE_QUALITY "720p"
 
 /* ─── power commands ──────────────────────────── */
 #define LOCK_CMD "slock"

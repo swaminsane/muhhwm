@@ -71,6 +71,7 @@ struct Module {
   int is_container;
   int can_focus;
   int has_window;
+  Window win;
 
   int margin_top, margin_right, margin_bottom, margin_left;
 

@@ -2,16 +2,17 @@
 #define PANEL_H
 
 #include "../../colors.h"
-#include "common/container.h" /* LayoutNode, container_build_tree, right_theme, … */
+#include "common/container.h"
 
 /* ── Geometry ───────────────────────────────────── */
 static const int panel_width_pct = 100;
 static const int panel_left_gap = 0;
 static const int panel_right_gap = 0;
-static const int panel_height_pct = 80;
+static const int panel_height_pct = 87;
 
 /* ── Appearance ─────────────────────────────────── */
-static const char *panel_fonts[] = {"monospace:size=10"};
+static const char *panel_fonts[] = {
+    "Terminus:size=12:weight=semibold:antialias=true:autohint=false"};
 static const char *clock_fonts[] = {"monospace:size=18"};
 
 static const char *panel_colors[][3] = {
@@ -21,7 +22,7 @@ static const char *panel_colors[][3] = {
     [3] = {COL_RED, COL_BG, COL_BORDER},
 };
 
-/* ── Module name strings (used directly by tree leaves) ───── */
+/* ── Module name strings ────────────────────────── */
 #define M_TOPSTRIP "topstrip"
 #define M_LEFT_KDE "kde_notifications"
 #define M_LEFT_THOUGHTS "thoughts"
@@ -42,131 +43,186 @@ static const char *panel_colors[][3] = {
 #define M_RIGHT_SCR "screenshot"
 #define M_RIGHT_PWR "power"
 #define M_TIMELINE "timeline"
+#define M_BOTTOM_PLACEHOLDER "bottom_placeholder"
+#define M_MPVBOX "mpvbox"
+#define M_MPVSEARCH "mpvsearch"
 
-/* ═══════════════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════
  *  DECLARATIVE LAYOUT TREE
- * ═══════════════════════════════════════════════════════════════ */
+ * ═══════════════════════════════════════════════════ */
 static LayoutNode layout_tree = {
-    .type = LAYOUT_COL,  /* vertical stack of rows */
-    .children = (LayoutNode[]) {
+    .type = LAYOUT_COL,
+    .children =
+        (LayoutNode[]){
 
-        /* ---------- Row 0 : topstrip (fixed 20 px) ---------- */
-        { .type = LAYOUT_ROW,
-          .fixed_px = 20,
-          .theme = &right_theme,
-          .children = (LayoutNode[]) {
-              { .type = LAYOUT_MODULE, .module_name = M_TOPSTRIP, .weight = 1.0f },
-              { .type = 0 }
-          },
-          .nchildren = 1
-        },
+            /* ─── Row 0 : topstrip (fixed 20 px) ─── */
+            {.type = LAYOUT_ROW,
+             .fixed_px = 20,
+             .children = (LayoutNode[]){{.type = LAYOUT_MODULE,
+                                         .module_name = M_TOPSTRIP,
+                                         .weight = 1.0f},
+                                        {.type = 0}},
+             .nchildren = 1},
 
-        /* ---------- Row 1 : main area (weight 70) ---------- */
-        { .type = LAYOUT_ROW,
-          .weight = 70.0f,
-          .children = (LayoutNode[]) {
+            /* ─── Row 1 : main area (weight 70) ─── */
+            {
+                .type = LAYOUT_ROW,
+                .weight = 70.0f,
+                .children =
+                    (LayoutNode[]){
 
-              /* left column (weight 33) */
-              { .type = LAYOUT_COL,
-                .weight = 33.0f,
-                .children = (LayoutNode[]) {
-                    { .type = LAYOUT_MODULE, .module_name = M_LEFT_KDE,       .weight = 1.0f },
-                    { .type = LAYOUT_MODULE, .module_name = M_LEFT_THOUGHTS,  .weight = 1.0f },
-                    { .type = LAYOUT_MODULE, .module_name = M_LEFT_INPUT,     .weight = 1.0f },
-                    { .type = 0 }
-                },
-                .nchildren = 3
-              },
+                        /* ═══════════ LEFT SUBPANEL (67%) ═══════════ */
+                        {
+                            .type = LAYOUT_COL,
+                            .weight = 67.0f,
+                            .children =
+                                (LayoutNode[]){
 
-              /* middle column (weight 34) */
-              { .type = LAYOUT_COL,
-                .weight = 34.0f,
-                .children = (LayoutNode[]) {
-                    { .type = LAYOUT_MODULE, .module_name = M_MID_DAYSTRIP,   .weight = 1.0f },
-                    { .type = LAYOUT_MODULE, .module_name = M_MID_CALENDAR,   .weight = 1.0f },
-                    { .type = LAYOUT_MODULE, .module_name = M_MID_ACTIVITY,   .weight = 1.0f },
-                    { .type = LAYOUT_MODULE, .module_name = M_MID_POMODORO,   .weight = 1.0f },
-                    { .type = LAYOUT_MODULE, .module_name = M_MID_MUSIC,      .weight = 1.0f },
-                    { .type = LAYOUT_MODULE, .module_name = M_MID_TEXTSMENU,  .weight = 1.0f },
-                    { .type = 0 }
-                },
-                .nchildren = 6
-              },
+                                    /* ── top 70% → 50/50 split ── */
+                                    {.type = LAYOUT_ROW,
+                                     .weight = 70.0f,
+                                     .children =
+                                         (LayoutNode[]){
+                                             /* left‑left (50%) – original left
+                                                modules */
+                                             {.type = LAYOUT_COL,
+                                              .weight = 50.0f,
+                                              .children = (LayoutNode[]){{.type =
+                                                                              LAYOUT_MODULE,
+                                                                          .module_name = M_LEFT_KDE,
+                                                                          .weight = 1.0f},
+                                                                         {.type =
+                                                                              LAYOUT_MODULE,
+                                                                          .module_name = M_LEFT_THOUGHTS,
+                                                                          .weight = 1.0f},
+                                                                         {.type =
+                                                                              LAYOUT_MODULE,
+                                                                          .module_name = M_LEFT_INPUT,
+                                                                          .weight = 1.0f},
+                                                                         {.type =
+                                                                              0}},
+                                              .nchildren = 3},
+                                             /* left‑right (50%) – middle
+                                                modules */
+                                             {
+                                                 .type = LAYOUT_COL, .weight = 50.0f, .children = (LayoutNode[]){{.type = LAYOUT_MODULE, .module_name = M_MID_DAYSTRIP, .weight = 1.0f}, {.type = LAYOUT_MODULE, .module_name = M_MID_CALENDAR, .weight = 1.0f}, {.type = LAYOUT_MODULE, .module_name = M_MID_ACTIVITY, .weight = 1.0f}, {.type = LAYOUT_MODULE, .module_name = M_MID_POMODORO, .weight = 1.0f}, {.type = LAYOUT_MODULE, .module_name = M_MID_MUSIC, .weight = 1.0f}, {.type = LAYOUT_MODULE, .module_name = M_MID_TEXTSMENU, .weight = 1.0f}, {.type = 0}}, .nchildren = 6},
+                                             {.type = 0}},
+                                     .nchildren = 2},
 
-              /* right column (weight 33) – nested structure */
-              { .type = LAYOUT_COL,
-                .weight = 33.0f,
-                .theme = &right_theme,
-                .children = (LayoutNode[]) {
+                                    /* ── bottom 30% → full‑width placeholder ──
+                                     */
+                                    {.type = LAYOUT_COL,
+                                     .weight = 30.0f,
+                                     .children = (LayoutNode
+                                                      []){{.type =
+                                                               LAYOUT_MODULE,
+                                                           .module_name = M_BOTTOM_PLACEHOLDER,
+                                                           .weight = 1.0f},
+                                                          {.type = 0}},
+                                     .nchildren = 1},
 
-                    /* clock */
-                    { .type = LAYOUT_MODULE, .module_name = M_RIGHT_CLOCK, .weight = 1.0f },
+                                    {.type = 0}},
+                            .nchildren = 2 /* top 70% / bottom 30% */
+                        },
 
-                    /* wifi + bt grid (2 columns) */
-                    { .type = LAYOUT_ROW,
-                      .weight = 1.0f,
-                      .children = (LayoutNode[]) {
-                          { .type = LAYOUT_MODULE, .module_name = M_RIGHT_WIFI, .weight = 1.0f },
-                          { .type = LAYOUT_MODULE, .module_name = M_RIGHT_BT,   .weight = 1.0f },
-                          { .type = 0 }
-                      },
-                      .nchildren = 2
-                    },
+                        /* ═══════════ RIGHT SUBPANEL (33%) ═══════════ */
+                        {
+                            .type = LAYOUT_COL,
+                            .weight = 33.0f,
+                            .theme = &right_theme,
+                            .children =
+                                (LayoutNode[]){
 
-                    /* volume */
-                    { .type = LAYOUT_MODULE, .module_name = M_RIGHT_VOL, .weight = 1.0f },
+                                    /* ── top 60% – right column modules ── */
+                                    {
+                                        .type = LAYOUT_COL,
+                                        .weight = 55.0f,
+                                        .children =
+                                            (LayoutNode[]){
+                                                {.type = LAYOUT_MODULE,
+                                                 .module_name = M_RIGHT_CLOCK,
+                                                 .weight = 1.0f},
+                                                /* wifi + bt grid (2 columns) */
+                                                {.type = LAYOUT_ROW,
+                                                 .weight = 1.0f,
+                                                 .children = (LayoutNode
+                                                                  []){{.type =
+                                                                           LAYOUT_MODULE,
+                                                                       .module_name = M_RIGHT_WIFI,
+                                                                       .weight = 1.0f},
+                                                                      {.type =
+                                                                           LAYOUT_MODULE,
+                                                                       .module_name = M_RIGHT_BT,
+                                                                       .weight = 1.0f},
+                                                                      {.type =
+                                                                           0}},
+                                                 .nchildren = 2},
+                                                {.type = LAYOUT_MODULE,
+                                                 .module_name = M_RIGHT_VOL,
+                                                 .weight = 1.0f},
+                                                {.type = LAYOUT_MODULE,
+                                                 .module_name = M_RIGHT_BRI,
+                                                 .weight = 1.0f},
+                                                /* kde + cpu + screenshot grid
+                                                   (3 columns) */
+                                                {.type = LAYOUT_ROW,
+                                                 .weight = 1.0f,
+                                                 .children = (LayoutNode
+                                                                  []){{.type =
+                                                                           LAYOUT_MODULE,
+                                                                       .module_name = M_RIGHT_KDE,
+                                                                       .weight = 1.0f},
+                                                                      {.type =
+                                                                           LAYOUT_MODULE,
+                                                                       .module_name = M_RIGHT_CPU,
+                                                                       .weight = 1.0f},
+                                                                      {.type =
+                                                                           LAYOUT_MODULE,
+                                                                       .module_name = M_RIGHT_SCR,
+                                                                       .weight = 1.0f},
+                                                                      {.type =
+                                                                           0}},
+                                                 .nchildren = 3},
+                                                {.type = LAYOUT_MODULE,
+                                                 .module_name = M_RIGHT_PWR,
+                                                 .weight = 1.0f},
+                                                {.type = 0}},
+                                        .nchildren = 6},
 
-                    /* brightness */
-                    { .type = LAYOUT_MODULE, .module_name = M_RIGHT_BRI, .weight = 1.0f },
+                                    /* ── bottom 40% – video box + search bar ──
+                                     */
+                                    {.type = LAYOUT_COL,
+                                     .weight = 45.0f,
+                                     .children =
+                                         (LayoutNode[]){
+                                             {.type = LAYOUT_MODULE,
+                                              .module_name = M_MPVBOX,
+                                              .weight = 1.0f},
+                                             {.type = LAYOUT_MODULE,
+                                              .module_name = M_MPVSEARCH,
+                                              .fixed_px = 24},
+                                             {.type = 0}},
+                                     .nchildren = 2},
 
-                    /* kde + cpu + screenshot grid (3 columns) */
-                    { .type = LAYOUT_ROW,
-                      .weight = 1.0f,
-                      .children = (LayoutNode[]) {
-                          { .type = LAYOUT_MODULE, .module_name = M_RIGHT_KDE, .weight = 1.0f },
-                          { .type = LAYOUT_MODULE, .module_name = M_RIGHT_CPU, .weight = 1.0f },
-                          { .type = LAYOUT_MODULE, .module_name = M_RIGHT_SCR, .weight = 1.0f },
-                          { .type = 0 }
-                      },
-                      .nchildren = 3
-                    },
+                                    {.type = 0}},
+                            .nchildren = 2 /* top 60% / bottom 40% */
+                        },
 
-                    /* power */
-                    { .type = LAYOUT_MODULE, .module_name = M_RIGHT_PWR, .weight = 1.0f },
+                        {.type = 0}},
+                .nchildren = 2 /* left subpanel + right subpanel */
+            },
 
-                    { .type = 0 }
-                },
-                .nchildren = 6   /* clock, grid2, vol, bri, grid3, power */
-              },
+            /* ─── Row 2 : timeline (fixed 13 px) ─── */
+            {.type = LAYOUT_ROW,
+             .fixed_px = 13,
+             .children = (LayoutNode[]){{.type = LAYOUT_MODULE,
+                                         .module_name = M_TIMELINE,
+                                         .weight = 1.0f},
+                                        {.type = 0}},
+             .nchildren = 1},
 
-              { .type = 0 }
-          },
-          .nchildren = 3
-        },
-
-        /* ---------- Row 2 : bottom (weight 30) ---------- */
-        { .type = LAYOUT_ROW,
-          .weight = 30.0f,
-          .children = (LayoutNode[]) {
-              { .type = LAYOUT_MODULE, .module_name = NULL, .weight = 1.0f },
-              { .type = 0 }
-          },
-          .nchildren = 1
-        },
-
-        /* ---------- Row 3 : timeline (fixed 13 px) ---------- */
-        { .type = LAYOUT_ROW,
-          .fixed_px = 13,
-          .children = (LayoutNode[]) {
-              { .type = LAYOUT_MODULE, .module_name = M_TIMELINE, .weight = 1.0f },
-              { .type = 0 }
-          },
-          .nchildren = 1
-        },
-
-        { .type = 0 }
-    },
-    .nchildren = 4
+            {.type = 0}},
+    .nchildren = 3 /* topstrip, main, timeline */
 };
 
 #endif

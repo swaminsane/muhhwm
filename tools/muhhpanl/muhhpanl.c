@@ -1,3 +1,4 @@
+
 #define _POSIX_C_SOURCE 200809L
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
@@ -28,11 +29,11 @@ Clr **scheme;
 int panel_w, panel_h;
 
 /* ── private state ──────────────────────────────── */
-static int screen;
-static Window panel_win;
+int screen;
+Window panel_win;
 static int sw, sh, barh;
-static int panel_x, panel_y;
-static int panel_shown = 0;
+int panel_x, panel_y;
+int panel_shown = 0;
 static int animating = 0, anim_step = 0, anim_dir = 0;
 static int dirty = 1;
 
@@ -49,6 +50,13 @@ static void animation_tick(void);
 static void draw_panel(void);
 static void build_layout(void);
 static void event_loop(void);
+void mpvbox_register(void);
+void mpvsearch_register(void);
+
+extern int mpvbox_x, mpvbox_y, mpvbox_w, mpvbox_h;
+extern Window mpv_win_export;
+void mpvbox_show(void);
+void mpvbox_hide(void);
 
 void panel_redraw(void) { dirty = 1; }
 void panel_hide(void) {
@@ -121,6 +129,7 @@ static void show_panel(void) {
   anim_dir = 1;
   panel_y = -panel_h;
   move_panel(panel_y);
+  mpvbox_show();
 }
 
 static void hide_panel(void) {
@@ -137,6 +146,7 @@ static void hide_panel(void) {
   animating = 1;
   anim_step = 0;
   anim_dir = -1;
+  mpvbox_hide();
 }
 
 /* ── animation ──────────────────────────────────── */
@@ -261,6 +271,20 @@ static void event_loop(void) {
         if (!panel_shown)
           continue;
 
+        /* ── mpv event replay (mouse + keyboard) ── */
+        if (mpvbox_w > 0 && iev.root_x >= mpvbox_x &&
+            iev.root_x < mpvbox_x + mpvbox_w && iev.root_y >= mpvbox_y &&
+            iev.root_y < mpvbox_y + mpvbox_h) {
+          if (iev.type == EV_PRESS && mpv_win_export) {
+            XAllowEvents(dpy, ReplayPointer, CurrentTime);
+            continue;
+          }
+          if (iev.type == EV_KEY_PRESS && mpv_win_export) {
+            XSendEvent(dpy, mpv_win_export, True, KeyPressMask, &ev);
+            continue;
+          }
+        }
+
         /* hide panel on outside click (buttons 1‑3) */
         if (iev.type == EV_PRESS && iev.button >= 1 && iev.button <= 3 &&
             (iev.root_x < panel_x || iev.root_x >= panel_x + panel_w ||
@@ -327,7 +351,8 @@ int main(void) {
 
   /* register modules that aren't auto‑registered */
   timeline_register();
-
+  mpvbox_register();
+  mpvsearch_register();
   build_layout();
   event_loop();
   return 0;

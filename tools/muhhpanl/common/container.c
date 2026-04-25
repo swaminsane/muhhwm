@@ -281,6 +281,38 @@ static void themed_container_draw(Module *self, int x, int y, int w, int h,
  * ================================================================ */
 static void container_input(Module *self, const InputEvent *ev) {
   Container *c = (Container *)self;
+
+  /* broadcast motion AND key events to all children (hover + keyboard) */
+  if (ev->type == EV_MOTION || ev->type == EV_KEY_PRESS) {
+    for (int i = 0; i < c->nchildren; i++) {
+      Module *ch = c->children[i];
+      if (!ch->input)
+        continue;
+
+      InputEvent local = *ev;
+      if (ev->type == EV_KEY_PRESS) {
+        /* keyboard events don't need coordinates */
+        local.x = 0;
+        local.y = 0;
+        local.root_x = ev->root_x; /* keep original for consistency */
+        local.root_y = ev->root_y;
+      } else {
+        /* motion – convert screen coords to child‑relative */
+        local.root_x = ev->root_x - panel_x;
+        local.root_y = ev->root_y - panel_y;
+        local.x = ev->root_x - (ch->x + panel_x + ch->margin_left);
+        local.y = ev->root_y - (ch->y + panel_y + ch->margin_top);
+      }
+      ch->input(ch, &local);
+    }
+    return;
+  }
+
+  /* all other events (mouse clicks, scroll) – hit‑test using panel‑relative
+   * coords */
+  int px = ev->root_x - panel_x;
+  int py = ev->root_y - panel_y;
+
   for (int i = 0; i < c->nchildren; i++) {
     Module *ch = c->children[i];
     if (!ch->input)
@@ -291,11 +323,12 @@ static void container_input(Module *self, const InputEvent *ev) {
     int cw = ch->w - ch->margin_left - ch->margin_right;
     int ch_h = ch->h - ch->margin_top - ch->margin_bottom;
 
-    if (ev->root_x >= cx && ev->root_x < cx + cw && ev->root_y >= cy &&
-        ev->root_y < cy + ch_h) {
+    if (px >= cx && px < cx + cw && py >= cy && py < cy + ch_h) {
       InputEvent local = *ev;
-      local.x = ev->root_x - cx;
-      local.y = ev->root_y - cy;
+      local.root_x = px;
+      local.root_y = py;
+      local.x = px - cx;
+      local.y = py - cy;
       ch->input(ch, &local);
       return;
     }
@@ -454,6 +487,8 @@ Module *container_build_tree(LayoutNode *node) {
 
   switch (node->type) {
   case LAYOUT_MODULE: {
+    if (!node->module_name)
+      return NULL;
     const char *names[] = {node->module_name, NULL};
     if (node->theme)
       return container_create_themed(names, 1, node->theme);

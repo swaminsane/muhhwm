@@ -8,7 +8,7 @@ BINDIR  = $(PREFIX)/bin
 INCS = -I. -Icommon \
        $(shell pkg-config --cflags x11 xft fontconfig)
 
-LIBS = $(shell pkg-config --libs x11 xft fontconfig) -lm
+LIBS = -lXext $(shell pkg-config --libs x11 xft fontconfig) -lm
 
 CFLAGS   = -std=c99 -pedantic -Wall -Wextra -O2 $(INCS) \
            -D_POSIX_C_SOURCE=200809L -DVERSION=\"$(VERSION)\"

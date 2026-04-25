@@ -16,6 +16,7 @@
 #define STRIP_MINUTES 1440
 #define DATA_FILE_MAX 512
 
+/* workspace colours – idle grey is now clearly visible on the bar background */
 #define COL_IDLE 0x5A5A5A
 #define COL_STUDY 0xC0392B
 #define COL_CODE 0x2980B9
@@ -24,13 +25,15 @@
 #define COL_CODE_B 0x3498DB
 #define COL_FREE_B 0x2ECC71
 
-#define BAR_BG 0x4C566A
+/* bar background – distinct from the panel’s main background */
+#define BAR_BG 0x3B4252
 
 static int hovered = 0;
 static unsigned char ns_data[STRIP_MINUTES];
 static char today_str[11] = "";
 static int data_loaded = 0;
 
+/* ── helpers ──────────────────────────────────────────── */
 static void get_today(char *out, size_t sz) {
   time_t t = time(NULL);
   struct tm *tm = localtime(&t);
@@ -96,6 +99,7 @@ static unsigned long ns_color(int ns, int bright) {
   }
 }
 
+/* transparent text via Xft */
 static void draw_text_transparent(int x, int y, const char *text,
                                   unsigned long rgb) {
   XftColor xft_col;
@@ -116,19 +120,25 @@ static void draw_text_transparent(int x, int y, const char *text,
                DefaultColormap(dpy, DefaultScreen(dpy)), &xft_col);
 }
 
+/* ── module callbacks ──────────────────────────────────── */
 static void tl_init(Module *m, int x, int y, int w, int h) {
+  (void)x;
+  (void)y;
   m->w = w;
   m->h = h;
   load_today_data();
 }
 
 static void tl_draw(Module *m, int x, int y, int w, int h, int focused) {
+  (void)focused;
   ensure_data_fresh();
   int cur_min = minute_of_day();
 
+  /* 1. solid background */
   XSetForeground(dpy, drw->gc, BAR_BG);
   XFillRectangle(dpy, drw->drawable, drw->gc, x, y, w, h);
 
+  /* 2. minute‑by‑minute workspace colours */
   for (int px = 0; px < w; px++) {
     int m = (px * STRIP_MINUTES) / w;
     if (m >= STRIP_MINUTES)
@@ -138,17 +148,25 @@ static void tl_draw(Module *m, int x, int y, int w, int h, int focused) {
     XDrawLine(dpy, drw->drawable, drw->gc, x + px, y, x + px, y + h - 1);
   }
 
+  /* 3. bright indicator for the last 3 minutes */
   {
-    int bright_x = (cur_min * w) / STRIP_MINUTES;
-    unsigned long bright_col = ns_color(ns_data[cur_min], 1);
-    XSetForeground(dpy, drw->gc, bright_col);
-    for (int dx = -1; dx <= 1; dx++) {
-      int bx = x + bright_x + dx;
-      if (bx >= x && bx < x + w)
-        XDrawLine(dpy, drw->drawable, drw->gc, bx, y, bx, y + h - 1);
+    int start_min = cur_min - 2;
+    if (start_min < 0)
+      start_min = 0;
+    int start_px = (start_min * w) / STRIP_MINUTES;
+    int end_px = ((cur_min + 1) * w) / STRIP_MINUTES;
+    if (end_px > w)
+      end_px = w;
+
+    for (int px = start_px; px < end_px; px++) {
+      int m = (px * STRIP_MINUTES) / w;
+      unsigned long bright_col = ns_color(ns_data[m], 1);
+      XSetForeground(dpy, drw->gc, bright_col);
+      XDrawLine(dpy, drw->drawable, drw->gc, x + px, y, x + px, y + h - 1);
     }
   }
 
+  /* 4. hour separators */
   unsigned long sep_col = 0x888888;
   XSetForeground(dpy, drw->gc, sep_col);
   for (int hr = 0; hr <= 24; hr++) {
@@ -157,14 +175,16 @@ static void tl_draw(Module *m, int x, int y, int w, int h, int focused) {
       XDrawLine(dpy, drw->drawable, drw->gc, sep_x, y, sep_x, y + h - 1);
   }
 
+  /* 5. bottom border */
   XSetForeground(dpy, drw->gc, sep_col);
   XDrawLine(dpy, drw->drawable, drw->gc, x, y + h - 1, x + w - 1, y + h - 1);
 
+  /* 6. hour numbers on hover – drawn inside the bar */
   if (hovered) {
     char buf[4];
     int hour_w = w / 24;
     unsigned long text_rgb = 0xDDDDDD;
-    int text_y = y + h - 2;
+    int text_y = y + h - 3;
     for (int hr = 0; hr < 24; hr++) {
       snprintf(buf, sizeof(buf), "%02d", hr);
       int tw = drw_fontset_getwidth(drw, buf);
@@ -174,13 +194,16 @@ static void tl_draw(Module *m, int x, int y, int w, int h, int focused) {
   }
 }
 
-/* inside tl_input, replace the bar_y calculation */
+static void tl_timer(Module *m) {
+  (void)m;
+  ensure_data_fresh();
+  panel_redraw();
+}
+
+/* ── unified input – uses absolute panel coordinates ── */
 static void tl_input(Module *m, const InputEvent *ev) {
   if (ev->type == EV_MOTION) {
-    /* timeline now knows its own position from the layout engine */
-    int bar_y = m->y;
-    int bar_h = m->h;
-    int new_hover = (ev->root_y >= bar_y && ev->root_y < bar_y + bar_h) ? 1 : 0;
+    int new_hover = (ev->root_y >= m->y && ev->root_y < m->y + m->h) ? 1 : 0;
     if (new_hover != hovered) {
       hovered = new_hover;
       panel_redraw();
@@ -188,11 +211,20 @@ static void tl_input(Module *m, const InputEvent *ev) {
   }
 }
 
+/* ── ensure the timeline never collapses ── */
+static LayoutHints *tl_hints(Module *m) {
+  static LayoutHints hints = {
+      .min_h = 13, .pref_h = 13, .expand_x = 1, .expand_y = 1};
+  return &hints;
+}
+
 Module timeline_module = {
-    .name = "M_TIMELINE",
+    .name = M_TIMELINE,
     .init = tl_init,
     .draw = tl_draw,
     .input = tl_input,
+    .timer = tl_timer,
+    .get_hints = tl_hints, /* ← fixes the collapsed height */
     .destroy = NULL,
     .priv = NULL,
 };

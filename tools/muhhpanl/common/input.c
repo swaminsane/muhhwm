@@ -1,7 +1,7 @@
 #include "input.h"
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
-#include <string.h> /* for memset */
+#include <string.h>
 
 int translate_event(XEvent *xev, InputEvent *iev) {
   memset(iev, 0, sizeof(*iev));
@@ -16,24 +16,23 @@ int translate_event(XEvent *xev, InputEvent *iev) {
     iev->root_y = xev->xbutton.y_root;
     iev->state = xev->xbutton.state;
 
-    /* scroll buttons: translate to EV_SCROLL with delta */
     switch (xev->xbutton.button) {
     case Button4:
       iev->type = EV_SCROLL;
       iev->scroll_dy = 1;
-      return 1; /* up */
+      return 1;
     case Button5:
       iev->type = EV_SCROLL;
       iev->scroll_dy = -1;
-      return 1; /* down */
+      return 1;
     case 6:
       iev->type = EV_SCROLL;
       iev->scroll_dx = 1;
-      return 1; /* left */
+      return 1;
     case 7:
       iev->type = EV_SCROLL;
       iev->scroll_dx = -1;
-      return 1; /* right */
+      return 1;
     }
     return 1;
 
@@ -60,7 +59,7 @@ int translate_event(XEvent *xev, InputEvent *iev) {
     iev->type = EV_KEY_PRESS;
     iev->keycode = xev->xkey.keycode;
     iev->state = xev->xkey.state;
-    iev->root_x = xev->xkey.x_root;
+    iev->root_x = xev->xkey.x_root; /* screen‑absolute */
     iev->root_y = xev->xkey.y_root;
     return 1;
 
