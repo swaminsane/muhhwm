@@ -1,4 +1,3 @@
-
 #define _POSIX_C_SOURCE 200809L
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
@@ -52,11 +51,15 @@ static void build_layout(void);
 static void event_loop(void);
 void mpvbox_register(void);
 void mpvsearch_register(void);
+void profanity_register(void);
 
+/* mpvbox globals – defined in modules/bottom/mpvbox.c */
 extern int mpvbox_x, mpvbox_y, mpvbox_w, mpvbox_h;
 extern Window mpv_win_export;
-void mpvbox_show(void);
-void mpvbox_hide(void);
+extern void mpvbox_show(void);
+extern void mpvbox_hide(void);
+
+/* profanity globals – defined in modules/bottom/profanity.c */
 
 void panel_redraw(void) { dirty = 1; }
 void panel_hide(void) {
@@ -196,8 +199,7 @@ static void handle_client_message(XClientMessageEvent *ev) {
 
 /* ── layout builder (declarative tree) ──────────── */
 static void build_layout(void) {
-  /* the tree is defined in panel.h as `layout_tree` */
-  extern LayoutNode layout_tree; /* single global tree */
+  extern LayoutNode layout_tree;
   root_container = container_build_tree(&layout_tree);
   if (!root_container) {
     fprintf(stderr, "muhhpanl: failed to build layout tree\n");
@@ -353,6 +355,7 @@ int main(void) {
   timeline_register();
   mpvbox_register();
   mpvsearch_register();
+  profanity_register();
   build_layout();
   event_loop();
   return 0;

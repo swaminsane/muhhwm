@@ -29,6 +29,10 @@ void module_set_hints(Module *m, int pref_w, int pref_h, int expand_x,
 LayoutHints *module_default_hints(Module *m);
 void init_themes(void);
 
+/* keyboard focus */
+void panel_set_focus(Module *m);
+Module *panel_get_focus(void);
+
 /* ═══════════════════════════════════════════════════════════════════
  *  DECLARATIVE LAYOUT TREE
  * ═══════════════════════════════════════════════════════════════════ */

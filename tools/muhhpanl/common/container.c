@@ -229,6 +229,9 @@ static void container_draw(Module *self, int x, int y, int w, int h,
     if (!ch->draw)
       continue;
 
+    if (ch->has_window)
+      continue;
+
     int cx = ch->x + ch->margin_left;
     int cy = ch->y + ch->margin_top;
     int cw = ch->w - ch->margin_left - ch->margin_right;
@@ -261,6 +264,9 @@ static void themed_container_draw(Module *self, int x, int y, int w, int h,
   for (int i = 0; i < c->nchildren; i++) {
     Module *ch = c->children[i];
     if (!ch->draw)
+      continue;
+
+    if (ch->has_window)
       continue;
 
     int cx = ch->x + ch->margin_left;
@@ -362,6 +368,13 @@ static void container_destroy(Module *self) {
   free(c->children);
   free(self);
 }
+
+// some extra shit
+static Module *focused_module = NULL;
+
+void panel_set_focus(Module *m) { focused_module = m; }
+
+Module *panel_get_focus(void) { return focused_module; }
 
 /* ================================================================
  *  Creation functions

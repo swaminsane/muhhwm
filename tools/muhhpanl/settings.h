@@ -35,6 +35,10 @@
 #define MPVSEARCH_HISTORY_MAX 100
 #define MPVSEARCH_HISTORY_FILE "$HOME/.cache/muhhwm/mpvsearch_history"
 #define MPV_YOUTUBE_QUALITY "720p"
+#define BAR_THOUGHTS_FILE "/home/swaminsane/sync/docs/bar_thoughts.md"
+#define KDE_CONNECT_APP_CMD "kdeconnect-app &"
+#define KDE_CONNECT_FILES_CMD "kdeconnect-cli --share"
+#define PROFANITY_CMD "st -w"
 
 /* ─── power commands ──────────────────────────── */
 #define LOCK_CMD "slock"

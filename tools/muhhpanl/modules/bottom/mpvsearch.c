@@ -255,6 +255,7 @@ static void input_search(Module *m, const InputEvent *ev) {
       ev->y < m->h) {
     if (!s->active)
       s->active = 1;
+    panel_set_focus(m); /* claim focus so other modules stop typing */
     s->len = 0;
     s->cursor = 0;
     s->input[0] = '\0';
@@ -265,7 +266,7 @@ static void input_search(Module *m, const InputEvent *ev) {
   }
 
   /* keyboard typing */
-  if (ev->type == EV_KEY_PRESS && s->active) {
+  if (ev->type == EV_KEY_PRESS && s->active && panel_get_focus() == m) {
     XKeyEvent ke;
     KeySym ks;
     char buf[32];

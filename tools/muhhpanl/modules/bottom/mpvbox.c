@@ -85,11 +85,11 @@ void mpvbox_play(const char *path) {
     struct timespec ts = {0, 100000000L};
     nanosleep(&ts, NULL);
     if (is_youtube && ytdl_fmt[0]) {
-      execlp("mpv", "mpv", wid_arg, "--osc=yes", "--ontop", "--volume=100",
-             "--no-terminal", ytdl_fmt, path, NULL);
+      execlp("mpv", "mpv", wid_arg, "--osc=yes", "--force-window=yes",
+             "--ontop", "--volume=100", "--no-terminal", ytdl_fmt, path, NULL);
     } else {
-      execlp("mpv", "mpv", wid_arg, "--osc=yes", "--ontop", "--volume=100",
-             "--no-terminal", path, NULL);
+      execlp("mpv", "mpv", wid_arg, "--osc=yes", "--force-window=yes",
+             "--ontop", "--volume=100", "--no-terminal", path, NULL);
     }
     _exit(1);
   } else if (pid > 0) {
