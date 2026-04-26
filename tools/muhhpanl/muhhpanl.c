@@ -302,10 +302,6 @@ static void event_loop(void) {
             XAllowEvents(dpy, ReplayPointer, CurrentTime);
             continue;
           }
-          if (iev.type == EV_KEY_PRESS && profanity_win_export) {
-            XSendEvent(dpy, profanity_win_export, True, KeyPressMask, &ev);
-            continue;
-          }
         }
 
         /* hide panel on outside click (buttons 1‑3) */

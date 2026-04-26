@@ -24,7 +24,8 @@ int profanity_x, profanity_y, profanity_w, profanity_h;
 Window profanity_win_export = None;
 
 static pid_t prof_pid = 0;
-static Window prof_win = None;
+static Window prof_win = None; /* our container */
+static Window term_win = None; /* st’s internal window */
 static int terminal_live = 0;
 
 static int dummy_handler(Display *d, XErrorEvent *e) {
@@ -43,6 +44,7 @@ static void kill_profanity(void) {
     XDestroyWindow(dpy, prof_win);
     prof_win = None;
     profanity_win_export = None;
+    term_win = None;
   }
   terminal_live = 0;
 }
@@ -55,13 +57,11 @@ static void profanity_init(Module *m, int x, int y, int w, int h) {
   m->margin_bottom = 0;
   m->margin_left = 0;
   m->margin_right = 0;
-  /* do NOT set has_window = 1; we want the container to call draw() every time
-   */
 }
 
 static void profanity_draw(Module *m, int x, int y, int w, int h, int focused) {
   if (!terminal_live) {
-    /* draw placeholder text until the terminal starts */
+    /* placeholder text before terminal starts */
     drw_setscheme(drw, scheme[0]);
     const char *msg = "profanity";
     int tw = drw_fontset_getwidth(drw, msg);
@@ -69,14 +69,14 @@ static void profanity_draw(Module *m, int x, int y, int w, int h, int focused) {
     drw_text(drw, x + (w - tw) / 2, y + (h - fh) / 2, tw, fh, 0, msg, 0);
   }
 
-  /* create the child window exactly once, after we have a valid size */
+  /* Create the container window only once.
+   * No KeyPressMask – st gets keyboard directly. */
   if (prof_win == None && w > 0 && h > 0) {
     XSetWindowAttributes attrs;
-    attrs.background_pixmap = None; /* transparent */
-    attrs.event_mask = ExposureMask | ButtonPressMask | ButtonReleaseMask |
-                       KeyPressMask | PointerMotionMask | FocusChangeMask;
+    attrs.background_pixmap = None;
+    attrs.event_mask = StructureNotifyMask | SubstructureNotifyMask |
+                       ExposureMask | FocusChangeMask;
 
-    /* Use CopyFromParent so depth/visual match the panel automatically */
     prof_win = XCreateWindow(dpy, panel_win, x, y, w, h, 0, CopyFromParent,
                              InputOutput, CopyFromParent,
                              CWBackPixmap | CWEventMask, &attrs);
@@ -98,12 +98,39 @@ static void profanity_draw(Module *m, int x, int y, int w, int h, int focused) {
     } else if (pid > 0) {
       prof_pid = pid;
       terminal_live = 1;
-      /* the terminal is now running – future draw calls will move/resize it */
+
+      /* Wait for st's internal window to appear */
+      int tries;
+      for (tries = 0; tries < 50; tries++) {
+        Window root_ret, parent_ret, *children;
+        unsigned int nchildren;
+        if (XQueryTree(dpy, prof_win, &root_ret, &parent_ret, &children,
+                       &nchildren) &&
+            nchildren > 0) {
+          term_win = children[0];
+          XFree(children);
+          break;
+        }
+        if (children)
+          XFree(children);
+        struct timespec ts10 = {0, 10000000L}; /* 10 ms */
+        nanosleep(&ts10, NULL);
+      }
+
+      if (term_win) {
+        /* Map then focus – must be viewable first! */
+        XMapWindow(dpy, term_win);
+        XFlush(dpy);
+        /* tiny delay to let the map take effect */
+        struct timespec ts10 = {0, 20000000L}; /* 20 ms */
+        nanosleep(&ts10, NULL);
+        XSetInputFocus(dpy, term_win, RevertToPointerRoot, CurrentTime);
+      }
       panel_redraw();
     }
   }
 
-  /* every frame, keep the child window positioned and sized correctly */
+  /* Keep the container window positioned and sized. */
   if (prof_win) {
     profanity_x = panel_x + x;
     profanity_y = panel_y + y;
@@ -112,28 +139,32 @@ static void profanity_draw(Module *m, int x, int y, int w, int h, int focused) {
 
     XMoveResizeWindow(dpy, prof_win, x, y, w, h);
 
-    /* synthetic ConfigureNotify so the embedded terminal knows its real size */
-    XEvent cn;
-    memset(&cn, 0, sizeof(cn));
-    cn.type = ConfigureNotify;
-    cn.xconfigure.window = prof_win;
-    cn.xconfigure.x = x;
-    cn.xconfigure.y = y;
-    cn.xconfigure.width = w;
-    cn.xconfigure.height = h;
-    cn.xconfigure.border_width = 0;
-    cn.xconfigure.above = None;
-    cn.xconfigure.override_redirect = False;
-    XSendEvent(dpy, prof_win, False, StructureNotifyMask, &cn);
-
+    if (term_win) {
+      XMoveResizeWindow(dpy, term_win, 0, 0, w, h);
+      XEvent cn;
+      memset(&cn, 0, sizeof(cn));
+      cn.type = ConfigureNotify;
+      cn.xconfigure.window = term_win;
+      cn.xconfigure.x = 0;
+      cn.xconfigure.y = 0;
+      cn.xconfigure.width = w;
+      cn.xconfigure.height = h;
+      cn.xconfigure.border_width = 0;
+      cn.xconfigure.above = None;
+      cn.xconfigure.override_redirect = False;
+      XSendEvent(dpy, term_win, False, StructureNotifyMask, &cn);
+    }
     XRaiseWindow(dpy, prof_win);
   }
 }
 
 void profanity_show(void) {
-  if (prof_win) {
+  if (term_win) {
     XMapWindow(dpy, prof_win);
+    XMapWindow(dpy, term_win);
     XRaiseWindow(dpy, prof_win);
+    XFlush(dpy);
+    XSetInputFocus(dpy, term_win, RevertToPointerRoot, CurrentTime);
   }
 }
 
@@ -143,8 +174,8 @@ void profanity_hide(void) {
 }
 
 static void profanity_input(Module *m, const InputEvent *ev) {
-  if (ev->type == EV_PRESS && prof_win && terminal_live) {
-    XSetInputFocus(dpy, prof_win, RevertToPointerRoot, CurrentTime);
+  if (ev->type == EV_PRESS && term_win) {
+    XSetInputFocus(dpy, term_win, RevertToPointerRoot, CurrentTime);
   }
 }
 
@@ -175,11 +206,10 @@ Module profanity_module = {
     .get_hints = profanity_hints,
     .theme = NULL,
     .margin_top = 0,
-    .margin_bottom = 0,
+    .margin_bottom = 4, /* Help avoid last line clipping */
     .margin_left = 0,
     .margin_right = 0,
-    .has_window =
-        0, /* we manage the child window ourselves, but draw every frame */
+    .has_window = 0,
 };
 
 void __attribute__((constructor)) profanity_register(void) {
