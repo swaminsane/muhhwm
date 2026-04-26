@@ -60,6 +60,10 @@ extern void mpvbox_show(void);
 extern void mpvbox_hide(void);
 
 /* profanity globals – defined in modules/bottom/profanity.c */
+extern int profanity_x, profanity_y, profanity_w, profanity_h;
+extern Window profanity_win_export;
+void profanity_show(void);
+void profanity_hide(void);
 
 void panel_redraw(void) { dirty = 1; }
 void panel_hide(void) {
@@ -133,6 +137,7 @@ static void show_panel(void) {
   panel_y = -panel_h;
   move_panel(panel_y);
   mpvbox_show();
+  profanity_show();
 }
 
 static void hide_panel(void) {
@@ -150,6 +155,7 @@ static void hide_panel(void) {
   anim_step = 0;
   anim_dir = -1;
   mpvbox_hide();
+  profanity_hide();
 }
 
 /* ── animation ──────────────────────────────────── */
@@ -283,6 +289,21 @@ static void event_loop(void) {
           }
           if (iev.type == EV_KEY_PRESS && mpv_win_export) {
             XSendEvent(dpy, mpv_win_export, True, KeyPressMask, &ev);
+            continue;
+          }
+        }
+
+        /* ── profanity event replay (mouse + keyboard) ── */
+        if (profanity_w > 0 && iev.root_x >= profanity_x &&
+            iev.root_x < profanity_x + profanity_w &&
+            iev.root_y >= profanity_y &&
+            iev.root_y < profanity_y + profanity_h) {
+          if (iev.type == EV_PRESS && profanity_win_export) {
+            XAllowEvents(dpy, ReplayPointer, CurrentTime);
+            continue;
+          }
+          if (iev.type == EV_KEY_PRESS && profanity_win_export) {
+            XSendEvent(dpy, profanity_win_export, True, KeyPressMask, &ev);
             continue;
           }
         }

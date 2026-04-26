@@ -80,7 +80,7 @@ static LayoutNode layout_tree =
 
                                         /* ── top 70% → 50/50 split ── */
                                         {.type = LAYOUT_ROW,
-                                         .weight = 70.0f,
+                                         .weight = 65.0f,
                                          .children =
                                              (LayoutNode[]){
                                                  /* left‑left (50%) – original
@@ -109,7 +109,7 @@ static LayoutNode layout_tree =
                                          * placeholder ──
                                          */
                                         {.type = LAYOUT_COL,
-                                         .weight = 30.0f,
+                                         .weight = 35.0f,
                                          .children =
                                              (LayoutNode
                                                   []){{.type = LAYOUT_MODULE,
