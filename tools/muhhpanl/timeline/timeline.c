@@ -11,7 +11,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
+#include <unistd.h>
 
 #define STRIP_MINUTES 1440
 #define DATA_FILE_MAX 512
@@ -32,6 +34,7 @@ static int hovered = 0;
 static unsigned char ns_data[STRIP_MINUTES];
 static char today_str[11] = "";
 static int data_loaded = 0;
+static time_t last_mtime = 0;
 
 /* ── helpers ──────────────────────────────────────────── */
 static void get_today(char *out, size_t sz) {
@@ -62,8 +65,13 @@ static void load_today_data(void) {
   FILE *f = fopen(path, "r");
   if (!f) {
     data_loaded = 1;
+    last_mtime = 0; /* no file yet */
     return;
   }
+
+  struct stat st;
+  if (fstat(fileno(f), &st) == 0)
+    last_mtime = st.st_mtime;
 
   char line[64];
   while (fgets(line, sizeof(line), f)) {
@@ -82,8 +90,18 @@ static void load_today_data(void) {
 static void ensure_data_fresh(void) {
   char today[11];
   get_today(today, sizeof(today));
-  if (strcmp(today, today_str) != 0 || !data_loaded)
+  if (strcmp(today, today_str) != 0 || !data_loaded) {
     load_today_data();
+    return;
+  }
+
+  /* Also reload if the file has been modified externally */
+  char path[DATA_FILE_MAX];
+  data_path(path, sizeof(path));
+  struct stat st;
+  if (stat(path, &st) == 0 && st.st_mtime != last_mtime) {
+    load_today_data();
+  }
 }
 
 static unsigned long ns_color(int ns, int bright) {
@@ -196,6 +214,7 @@ static void tl_draw(Module *m, int x, int y, int w, int h, int focused) {
 
 static void tl_timer(Module *m) {
   (void)m;
+  /* This will reload the data file if it changed externally */
   ensure_data_fresh();
   panel_redraw();
 }
@@ -224,7 +243,7 @@ Module timeline_module = {
     .draw = tl_draw,
     .input = tl_input,
     .timer = tl_timer,
-    .get_hints = tl_hints, /* ← fixes the collapsed height */
+    .get_hints = tl_hints,
     .destroy = NULL,
     .priv = NULL,
 };

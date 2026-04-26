@@ -69,8 +69,7 @@ static void profanity_draw(Module *m, int x, int y, int w, int h, int focused) {
     drw_text(drw, x + (w - tw) / 2, y + (h - fh) / 2, tw, fh, 0, msg, 0);
   }
 
-  /* Create the container window only once.
-   * No KeyPressMask – st gets keyboard directly. */
+  /* Create the container window once – use the exact module rectangle. */
   if (prof_win == None && w > 0 && h > 0) {
     XSetWindowAttributes attrs;
     attrs.background_pixmap = None;
@@ -93,13 +92,15 @@ static void profanity_draw(Module *m, int x, int y, int w, int h, int focused) {
     pid_t pid = fork();
     if (pid == 0) {
       XSetErrorHandler(dummy_handler);
+      /* st will use the container window size to calculate rows/cols.
+         No -g flag needed. */
       execlp("st", "st", "-w", wid_str, "-e", "profanity", NULL);
       _exit(1);
     } else if (pid > 0) {
       prof_pid = pid;
       terminal_live = 1;
 
-      /* Wait for st's internal window to appear */
+      /* wait for st’s internal window to appear */
       int tries;
       for (tries = 0; tries < 50; tries++) {
         Window root_ret, parent_ret, *children;
@@ -118,19 +119,15 @@ static void profanity_draw(Module *m, int x, int y, int w, int h, int focused) {
       }
 
       if (term_win) {
-        /* Map then focus – must be viewable first! */
+        /* Map the terminal child – no focus set here (click will do it). */
         XMapWindow(dpy, term_win);
         XFlush(dpy);
-        /* tiny delay to let the map take effect */
-        struct timespec ts10 = {0, 20000000L}; /* 20 ms */
-        nanosleep(&ts10, NULL);
-        XSetInputFocus(dpy, term_win, RevertToPointerRoot, CurrentTime);
       }
       panel_redraw();
     }
   }
 
-  /* Keep the container window positioned and sized. */
+  /* Keep the container window positioned and sized correctly. */
   if (prof_win) {
     profanity_x = panel_x + x;
     profanity_y = panel_y + y;
@@ -139,20 +136,10 @@ static void profanity_draw(Module *m, int x, int y, int w, int h, int focused) {
 
     XMoveResizeWindow(dpy, prof_win, x, y, w, h);
 
+    /* Resize the terminal child to fill the container exactly.
+       No synthetic ConfigureNotify – st will notice the resize. */
     if (term_win) {
       XMoveResizeWindow(dpy, term_win, 0, 0, w, h);
-      XEvent cn;
-      memset(&cn, 0, sizeof(cn));
-      cn.type = ConfigureNotify;
-      cn.xconfigure.window = term_win;
-      cn.xconfigure.x = 0;
-      cn.xconfigure.y = 0;
-      cn.xconfigure.width = w;
-      cn.xconfigure.height = h;
-      cn.xconfigure.border_width = 0;
-      cn.xconfigure.above = None;
-      cn.xconfigure.override_redirect = False;
-      XSendEvent(dpy, term_win, False, StructureNotifyMask, &cn);
     }
     XRaiseWindow(dpy, prof_win);
   }
@@ -163,8 +150,7 @@ void profanity_show(void) {
     XMapWindow(dpy, prof_win);
     XMapWindow(dpy, term_win);
     XRaiseWindow(dpy, prof_win);
-    XFlush(dpy);
-    XSetInputFocus(dpy, term_win, RevertToPointerRoot, CurrentTime);
+    /* Do NOT set focus here – clicking will activate the terminal. */
   }
 }
 
@@ -174,9 +160,7 @@ void profanity_hide(void) {
 }
 
 static void profanity_input(Module *m, const InputEvent *ev) {
-  if (ev->type == EV_PRESS && term_win) {
-    XSetInputFocus(dpy, term_win, RevertToPointerRoot, CurrentTime);
-  }
+  /* Mouse clicks already replayed to terminal; nothing to do here. */
 }
 
 static void profanity_destroy(Module *m) { kill_profanity(); }
@@ -206,7 +190,7 @@ Module profanity_module = {
     .get_hints = profanity_hints,
     .theme = NULL,
     .margin_top = 0,
-    .margin_bottom = 4, /* Help avoid last line clipping */
+    .margin_bottom = 0, /* no extra shaving – let st handle its grid */
     .margin_left = 0,
     .margin_right = 0,
     .has_window = 0,

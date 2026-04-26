@@ -518,6 +518,10 @@ Module *container_build_tree(LayoutNode *node) {
     else
       cont = container_create_manual(vertical);
 
+    /* apply gap override if set */
+    if (node->gap_override > 0)
+      container_set_gap(cont, node->gap_override);
+
     for (int i = 0; i < node->nchildren; i++) {
       LayoutNode *child_node = &node->children[i];
       Module *child = container_build_tree(child_node);

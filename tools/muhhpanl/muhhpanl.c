@@ -293,15 +293,20 @@ static void event_loop(void) {
           }
         }
 
-        /* ── profanity event replay (mouse + keyboard) ── */
+        /* ── profanity event replay (mouse clicks) ── */
         if (profanity_w > 0 && iev.root_x >= profanity_x &&
             iev.root_x < profanity_x + profanity_w &&
             iev.root_y >= profanity_y &&
             iev.root_y < profanity_y + profanity_h) {
           if (iev.type == EV_PRESS && profanity_win_export) {
+            /* Let the click fall through to the embedded terminal.
+               This will set focus on the terminal and deliver the button event.
+             */
             XAllowEvents(dpy, ReplayPointer, CurrentTime);
             continue;
           }
+          /* Keyboard events are not forwarded – they go directly to the
+           * terminal if it has focus. */
         }
 
         /* hide panel on outside click (buttons 1‑3) */

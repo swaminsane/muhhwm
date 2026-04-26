@@ -87,6 +87,7 @@ static LayoutNode layout_tree =
                                                     left modules */
                                                  {.type = LAYOUT_COL,
                                                   .weight = 50.0f,
+                                                  .gap_override = 0,
                                                   .children = (LayoutNode[]){{.type =
                                                                                   LAYOUT_MODULE,
                                                                               .module_name = M_LEFT_THOUGHTS,

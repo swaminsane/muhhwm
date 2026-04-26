@@ -56,8 +56,9 @@ struct LayoutNode {
   int nchildren;        /* number of children */
 
   /* sizing hints in the parent's direction */
-  float weight; /* flex weight (default 1.0) */
-  int fixed_px; /* if >0, fixed pixel size */
+  float weight;     /* flex weight (default 1.0) */
+  int fixed_px;     /* if >0, fixed pixel size */
+  int gap_override; /* if > 0, override container gap for this node */
 
   /* optional theme for this node (if it becomes a container) */
   ContainerTheme *theme;
