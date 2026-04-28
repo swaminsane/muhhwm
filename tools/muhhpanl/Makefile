@@ -17,11 +17,7 @@ LDFLAGS  = $(LIBS)
 
 SRC = muhhpanl.c \
       $(wildcard common/*.c) \
-      $(wildcard modules/left/*.c) \
-      $(wildcard modules/middle/*.c) \
-      $(wildcard modules/right/*.c) \
-      $(wildcard modules/bottom/*.c) \
-      $(wildcard modules/topstrip/*.c) \
+      $(wildcard modules/*.c) \
       $(wildcard timeline/*.c)
 
 OBJ = $(SRC:.c=.o)

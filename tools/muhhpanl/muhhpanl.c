@@ -73,38 +73,62 @@ LayoutNode layout_tree =
                             {.type = LAYOUT_MODULE, .module_name = M_LEFT_THOUGHTS, .fixed_px = 200},
                             {.type = LAYOUT_MODULE, .module_name = M_LEFT_INPUT, .fixed_px = 140},
                             {.type = 0}}, .nchildren = 3},
-                       {.type = LAYOUT_COL, .weight = 45.0f,
-                        .children = (LayoutNode[]){
-                            {.type = LAYOUT_MODULE, .module_name = M_MID_DAYSTRIP,    .weight = 1.0f},
-                            {.type = LAYOUT_MODULE, .module_name = M_MID_CALENDAR,    .weight = 1.0f},
-                            {.type = LAYOUT_MODULE, .module_name = M_MID_ACTIVITY,    .weight = 1.0f},
-                            {.type = LAYOUT_MODULE, .module_name = M_MID_POMODORO,    .weight = 1.0f},
-                            {.type = LAYOUT_MODULE, .module_name = M_MID_MUSIC,       .weight = 1.0f},
-                            /* spacer to push next two bars to bottom */
-                            {.type = LAYOUT_COL, .weight = 1.0f,
-                             .children = (LayoutNode[]){{.type = 0}},
-                             .nchildren = 0},
-                            /* textsmenu + smsinput stacked with 6 px gap */
-                            {.type = LAYOUT_COL, .fixed_px = 54,   /* 24 + 3 + 3 + 24 */
-                             .gap = 0,
-                             .children = (LayoutNode[]){
-                                 {.type = LAYOUT_MODULE, .module_name = M_MID_TEXTSMENU,
-                                  .fixed_px = 24,
-                                  .margin_top = 0, .margin_bottom = 3},
-                                 {.type = LAYOUT_MODULE, .module_name = M_SMS_INPUT,
-                                  .fixed_px = 24,
-                                  .margin_top = 3, .margin_bottom = 0},
-                                 {.type = 0}},
-                             .nchildren = 2},
-                            {.type = 0}}, .nchildren = 7},
+{.type = LAYOUT_COL, .weight = 45.0f,
+ .children = (LayoutNode[]){
+     /* daystrip */
+     {.type = LAYOUT_MODULE, .module_name = M_MID_DAYSTRIP,
+      .fixed_px = 24},
+
+     /* 6px spacer → 12px total gap below daystrip */
+     {.type = LAYOUT_COL, .fixed_px = 6,
+      .children = (LayoutNode[]){{.type = 0}}, .nchildren = 0},
+
+     /* pomodoro */
+     {.type = LAYOUT_MODULE, .module_name = M_MID_POMODORO,
+      .fixed_px = 24},
+
+     /* smaller spacer: 4px → total gap 10px above calendar */
+     {.type = LAYOUT_COL, .fixed_px = 4,
+      .children = (LayoutNode[]){{.type = 0}}, .nchildren = 0},
+
+     /* calendar – fixed 144px */
+     {.type = LAYOUT_MODULE, .module_name = M_MID_CALENDAR,
+      .fixed_px = 144, .margin_top = 0, .margin_bottom = 0},
+
+     /* larger spacer: 12px → total gap 18px below calendar */
+     {.type = LAYOUT_COL, .fixed_px = 12,
+      .children = (LayoutNode[]){{.type = 0}}, .nchildren = 0},
+
+     /* music */
+     {.type = LAYOUT_MODULE, .module_name = M_MID_MUSIC,
+      .weight = 1.0f, .margin_top = 0, .margin_bottom = 0},
+
+     /* spacer to push next two bars to bottom */
+     {.type = LAYOUT_COL, .weight = 1.0f,
+      .children = (LayoutNode[]){{.type = 0}},
+      .nchildren = 0},
+
+     /* textsmenu + smsinput stacked with 6px gap */
+     {.type = LAYOUT_COL, .fixed_px = 54,
+      .gap = 0,
+      .children = (LayoutNode[]){
+          {.type = LAYOUT_MODULE, .module_name = M_MID_TEXTSMENU,
+           .fixed_px = 24,
+           .margin_top = 0, .margin_bottom = 3},
+          {.type = LAYOUT_MODULE, .module_name = M_SMS_INPUT,
+           .fixed_px = 24,
+           .margin_top = 3, .margin_bottom = 0},
+          {.type = 0}},
+      .nchildren = 2},
+     {.type = 0}}, .nchildren = 11},
                        {.type = 0}}, .nchildren = 2},
                   /* bottom 35% → profanity */
                   {.type = LAYOUT_COL, .weight = 40.0f,
                    .children = (LayoutNode[]){{.type = LAYOUT_MODULE, .module_name = M_PROFANITY, .weight = 1.0f}, {.type = 0}}, .nchildren = 1},
                   {.type = 0}}, .nchildren = 2},
-             /* right subpanel 33% */
+             /* right subpanel 33% – no border theme */
              {.type = LAYOUT_COL, .weight = 37.0f,
-                 .children = (LayoutNode[]){
+              .children = (LayoutNode[]){
                   /* ── top half (55%): divide into 3 vertical sub‑panels ── */
                   {.type = LAYOUT_COL, .weight = 55.0f,
                    .children = (LayoutNode[]){
@@ -112,9 +136,7 @@ LayoutNode layout_tree =
                        /* ① clock + weather (40%, centred) */
                        {.type = LAYOUT_COL, .weight = 40.0f,
                         .children = (LayoutNode[]){
-                            /* top spacer */
                             {.type = LAYOUT_COL, .weight = 1.0f, .children = (LayoutNode[]){{.type = 0}}, .nchildren = 0},
-                            /* clock + weather row (112 px tall) */
                             {.type = LAYOUT_ROW, .fixed_px = 112,
                              .children = (LayoutNode[]){
                                  {.type = LAYOUT_COL, .weight = 1.0f, .children = (LayoutNode[]){{.type = 0}}, .nchildren = 0},
@@ -124,49 +146,37 @@ LayoutNode layout_tree =
                                   .children = (LayoutNode[]){{.type = LAYOUT_MODULE, .module_name = M_WEATHER,  .weight = 1.0f}, {.type = 0}}, .nchildren = 1},
                                  {.type = LAYOUT_COL, .weight = 1.0f, .children = (LayoutNode[]){{.type = 0}}, .nchildren = 0},
                                  {.type = 0}}, .nchildren = 4},
-                            /* bottom spacer */
                             {.type = LAYOUT_COL, .weight = 1.0f, .children = (LayoutNode[]){{.type = 0}}, .nchildren = 0},
                             {.type = 0}}, .nchildren = 3},
 
-                       /* ② cell squares (35%, with 4px top margin) */
-                       {.type = LAYOUT_COL, .weight = 35.0f, .margin_top = 4,
+                       /* ② cell squares (35%, centred) */
+                       {.type = LAYOUT_COL, .weight = 35.0f,
                         .children = (LayoutNode[]){
-                            /* top spacer */
                             {.type = LAYOUT_COL, .weight = 1.0f, .children = (LayoutNode[]){{.type = 0}}, .nchildren = 0},
-                            /* squares row (50 px) */
                             {.type = LAYOUT_ROW, .fixed_px = 50,
                              .children = (LayoutNode[]){
                                  {.type = LAYOUT_COL, .weight = 1.0f, .children = (LayoutNode[]){{.type = 0}}, .nchildren = 0},
-                                 /* WiFi */
                                  {.type = LAYOUT_COL, .fixed_px = 50,
                                   .children = (LayoutNode[]){{.type = LAYOUT_MODULE, .module_name = M_RIGHT_WIFI, .fixed_px = 50}, {.type = 0}}, .nchildren = 1},
-                                 /* Bluetooth */
                                  {.type = LAYOUT_COL, .fixed_px = 50,
                                   .children = (LayoutNode[]){{.type = LAYOUT_MODULE, .module_name = M_RIGHT_BT, .fixed_px = 50}, {.type = 0}}, .nchildren = 1},
-                                 /* CPU governor */
                                  {.type = LAYOUT_COL, .fixed_px = 50,
                                   .children = (LayoutNode[]){{.type = LAYOUT_MODULE, .module_name = M_RIGHT_CPU, .fixed_px = 50}, {.type = 0}}, .nchildren = 1},
-                                 /* Screenshot */
                                  {.type = LAYOUT_COL, .fixed_px = 50,
                                   .children = (LayoutNode[]){{.type = LAYOUT_MODULE, .module_name = M_RIGHT_SCR, .fixed_px = 50}, {.type = 0}}, .nchildren = 1},
-                                 /* Audio sink */
                                  {.type = LAYOUT_COL, .fixed_px = 50,
                                   .children = (LayoutNode[]){{.type = LAYOUT_MODULE, .module_name = M_AUDIOSINK, .fixed_px = 50}, {.type = 0}}, .nchildren = 1},
-                                 /* ADB */
                                  {.type = LAYOUT_COL, .fixed_px = 50,
                                   .children = (LayoutNode[]){{.type = LAYOUT_MODULE, .module_name = M_ADB, .fixed_px = 50}, {.type = 0}}, .nchildren = 1},
                                  {.type = LAYOUT_COL, .weight = 1.0f, .children = (LayoutNode[]){{.type = 0}}, .nchildren = 0},
                                  {.type = 0}}, .nchildren = 8},
-                            /* bottom spacer */
                             {.type = LAYOUT_COL, .weight = 1.0f, .children = (LayoutNode[]){{.type = 0}}, .nchildren = 0},
                             {.type = 0}}, .nchildren = 3},
 
-                       /* ③ volume / brightness sliders + power (25%, with 4px top margin) */
-                       {.type = LAYOUT_COL, .weight = 25.0f, .margin_top = 4,
+                       /* ③ volume / brightness sliders + power (25%, centred) */
+                       {.type = LAYOUT_COL, .weight = 25.0f,
                         .children = (LayoutNode[]){
-                            /* top spacer */
                             {.type = LAYOUT_COL, .weight = 1.0f, .children = (LayoutNode[]){{.type = 0}}, .nchildren = 0},
-                            /* volume (24) + brightness (50) stacked with 6 px gap */
                             {.type = LAYOUT_COL,
                              .gap = 6,
                              .fixed_px = 80,
@@ -178,10 +188,8 @@ LayoutNode layout_tree =
                                   .margin_top = 0, .margin_bottom = 0},
                                  {.type = 0}},
                              .nchildren = 2},
-                            /* power (24 px) – slim bar with tiny gap above */
                             {.type = LAYOUT_MODULE, .module_name = M_RIGHT_PWR, .fixed_px = 24,
                              .margin_top = 2, .margin_bottom = 0},
-                            /* bottom spacer */
                             {.type = LAYOUT_COL, .weight = 1.0f, .children = (LayoutNode[]){{.type = 0}}, .nchildren = 0},
                             {.type = 0}}, .nchildren = 4},
 
@@ -479,6 +487,30 @@ static void event_loop(void) {
 int main(void) {
     dpy = XOpenDisplay(NULL);
     if (!dpy) die("muhhpanl: cannot open display\n");
+
+    /* ── ensure a D‑Bus session bus is available (needed by playerctl) ── */
+    {
+        const char *dbus = getenv("DBUS_SESSION_BUS_ADDRESS");
+        if (!dbus) {
+            FILE *f = popen("dbus-launch --sh-syntax 2>/dev/null", "r");
+            if (f) {
+                char line[512];
+                while (fgets(line, sizeof(line), f)) {
+                    if (strncmp(line, "DBUS_SESSION_BUS_ADDRESS=", 25) == 0) {
+                        line[strcspn(line, "\n")] = '\0';
+                        char *eq = strchr(line, '=');
+                        if (eq) {
+                            *eq = '\0';
+                            setenv(line, eq + 1, 1);
+                        }
+                        break;
+                    }
+                }
+                pclose(f);
+            }
+        }
+    }
+
     screen = DefaultScreen(dpy);
     root = RootWindow(dpy, screen);
     sw = DisplayWidth(dpy, screen);

@@ -16,7 +16,6 @@ static const int panel_height_pct = 87;
 #define M_LEFT_INPUT "input"
 #define M_MID_DAYSTRIP "daystrip"
 #define M_MID_CALENDAR "calendar"
-#define M_MID_ACTIVITY "activity"
 #define M_MID_POMODORO "pomodoro"
 #define M_MID_MUSIC "music"
 #define M_MID_TEXTSMENU "textsmenu"
