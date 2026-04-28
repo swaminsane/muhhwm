@@ -1,7 +1,9 @@
 #define _POSIX_C_SOURCE 200809L
+#include <X11/Xatom.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -35,48 +37,162 @@ typedef struct {
 
 static InputState *st(Module *m) { return (InputState *)m->priv; }
 
-/* ── helpers ─────────────────────────────────────── */
-static void save_note(InputState *s) {
-  if (s->len == 0)
+/* ── query workspace and window title from WM atoms ────────────── */
+static void get_workspace_info(char *workspace, size_t sz, char *wintitle,
+                               size_t tsz) {
+  Atom a_ws = XInternAtom(dpy, "_MUHH_CURRENT_WORKSPACE", False);
+  Atom a_title = XInternAtom(dpy, "_MUHH_ACTIVE_WINDOW_TITLE", False);
+
+  Atom type;
+  int format;
+  unsigned long nitems, after;
+  unsigned char *data = NULL;
+
+  /* workspace string */
+  if (XGetWindowProperty(dpy, root, a_ws, 0, (long)(sz - 1), False, XA_STRING,
+                         &type, &format, &nitems, &after, &data) == Success &&
+      data) {
+    strncpy(workspace, (char *)data, sz - 1);
+    workspace[sz - 1] = '\0';
+    XFree(data);
+  } else {
+    snprintf(workspace, sz, "?");
+  }
+
+  /* active window title */
+  if (XGetWindowProperty(dpy, root, a_title, 0, (long)(tsz - 1), False,
+                         XA_STRING, &type, &format, &nitems, &after,
+                         &data) == Success &&
+      data) {
+    strncpy(wintitle, (char *)data, tsz - 1);
+    wintitle[tsz - 1] = '\0';
+    XFree(data);
+  } else {
+    wintitle[0] = '\0';
+  }
+}
+
+/* ── trim whitespace ──────────────────────────────────────────── */
+static char *trim(char *s) {
+  while (isspace((unsigned char)*s))
+    s++;
+  char *e = s + strlen(s) - 1;
+  while (e > s && isspace((unsigned char)*e))
+    e--;
+  *(e + 1) = '\0';
+  return s;
+}
+
+/* ── clean window title for notes ───────────────────────────────
+ * - strip tabbed‑* :: prefix to show wrapped client's title
+ * - strip surf keybinding prefix like @key:something |
+ * - keep browser decorations ( — Mozilla Firefox, - Mozilla Firefox)
+ * - keep full paths and everything else untouched
+ */
+static void clean_title(const char *raw, char *out, size_t outsz) {
+  if (!raw || !*raw) {
+    snprintf(out, outsz, "unknown");
     return;
-  time_t now = time(NULL);
-  struct tm *tm = localtime(&now);
-  char ts[16];
-  strftime(ts, sizeof(ts), "%H:%M", tm);
+  }
 
-  FILE *f = fopen(BAR_THOUGHTS_FILE, "a+"); /* a+ = append + read */
-  if (!f)
-    return;
+  /* work on a mutable copy */
+  char buf[512];
+  strncpy(buf, raw, sizeof(buf) - 1);
+  buf[sizeof(buf) - 1] = '\0';
+  char *p = buf;
 
-  /* check if the last line already contains today's date */
-  char date[16];
-  strftime(date, sizeof(date), "%Y-%m-%d", tm);
-
-  fseek(f, 0, SEEK_END);
-  long fsize = ftell(f);
-  char last_line[128] = "";
-  if (fsize > 0) {
-    /* read the last line */
-    fseek(f, fsize - 120, SEEK_SET); /* go back ~120 bytes */
-    char buf[128];
-    while (fgets(buf, sizeof(buf), f)) {
-      strncpy(last_line, buf, sizeof(last_line) - 1);
+  /* 1. remove tabbed‑* :: prefix */
+  if (strncmp(p, "tabbed", 6) == 0) {
+    char *sep = strstr(p, " :: ");
+    if (sep) {
+      p = sep + 4; /* skip " :: " */
+      while (*p == ' ')
+        p++;
     }
   }
 
-  int need_header = 1;
-  if (strstr(last_line, date)) {
-    need_header = 0;
+  /* 2. remove surf keybinding prefix like @xyz:T |
+   *    pattern: @ followed by non‑space chars, then " | "
+   */
+  if (p[0] == '@') {
+    char *pipe = strstr(p, " | ");
+    if (pipe) {
+      p = pipe + 3;
+      while (*p == ' ')
+        p++;
+    }
   }
 
-  if (need_header) {
-    fprintf(f, "\n## %s\n\n", date);
+  /* trim leading/trailing whitespace after modifications */
+  p = trim(p);
+
+  strncpy(out, p, outsz - 1);
+  out[outsz - 1] = '\0';
+}
+
+/* ── note saving with proper date header & rich metadata ───────── */
+static void save_note(InputState *s) {
+  if (s->len == 0)
+    return;
+
+  time_t now = time(NULL);
+  struct tm *tm = localtime(&now);
+  char timestamp[16];
+  strftime(timestamp, sizeof(timestamp), "%H:%M", tm);
+  char today[16];
+  strftime(today, sizeof(today), "%Y-%m-%d", tm);
+
+  /* get workspace / tag and window title from WM */
+  char workspace[64], wintitle_raw[256];
+  get_workspace_info(workspace, sizeof(workspace), wintitle_raw,
+                     sizeof(wintitle_raw));
+
+  /* clean title for readable notes */
+  char wintitle[256];
+  clean_title(wintitle_raw, wintitle, sizeof(wintitle));
+
+  const char *filepath = BAR_THOUGHTS_FILE;
+
+  /* check if today's date header already exists */
+  int header_needed = 1;
+  FILE *f = fopen(filepath, "r");
+  if (f) {
+    char line[256];
+    char last_date_header[32] = "";
+    while (fgets(line, sizeof(line), f)) {
+      if (strncmp(line, "## ", 3) == 0) {
+        strncpy(last_date_header, line + 3, sizeof(last_date_header) - 1);
+        char *nl = strchr(last_date_header, '\n');
+        if (nl)
+          *nl = '\0';
+      }
+    }
+    fclose(f);
+    if (strcmp(last_date_header, today) == 0)
+      header_needed = 0;
   }
 
-  fprintf(f, "[%s] %s\n", ts, s->buffer);
+  f = fopen(filepath, "a");
+  if (!f)
+    return;
+
+  if (header_needed) {
+    fseek(f, 0, SEEK_END);
+    if (ftell(f) > 0)
+      fprintf(f, "\n");
+    fprintf(f, "## %s\n\n", today);
+  }
+
+  if (wintitle[0])
+    fprintf(f, "[%s] [%s] [%s] %s\n", timestamp, workspace, wintitle,
+            s->buffer);
+  else
+    fprintf(f, "[%s] [%s] %s\n", timestamp, workspace, s->buffer);
+
   fclose(f);
 }
 
+/* ── clipboard paste ────────────────────────────────────────────── */
 static void paste_clipboard(InputState *s) {
   FILE *p = popen("xclip -selection clipboard -o 2>/dev/null || "
                   "xsel -bo 2>/dev/null",
@@ -99,6 +215,7 @@ static void paste_clipboard(InputState *s) {
   panel_redraw();
 }
 
+/* ── wrap recalculation for multi-line display ──────────────── */
 static void recalc_wrap(InputState *s, int inner_w) {
   int p = 0, line = 0;
   s->wrap_offsets[0] = 0;
@@ -136,7 +253,7 @@ static void recalc_wrap(InputState *s, int inner_w) {
   }
 }
 
-/* ── callbacks ──────────────────────────────────── */
+/* ── module callbacks ────────────────────────────────────────── */
 static void input_init(Module *m, int x, int y, int w, int h) {
   InputState *s = calloc(1, sizeof(InputState));
   s->last_blink = time(NULL);
@@ -168,7 +285,6 @@ static void input_draw(Module *m, int x, int y, int w, int h, int focused) {
   int font_h = drw->fonts->h;
   int line_h = font_h + 2;
 
-  /* prompt – accent colour when active */
   XSetForeground(dpy, drw->gc,
                  s->active ? scheme[1][ColFg].pixel : scheme[0][ColFg].pixel);
   drw_text(drw, inner_x, inner_y + 2, 16, font_h, 0, ">", 0);
@@ -204,7 +320,6 @@ static void input_input(Module *m, const InputEvent *ev) {
   if (!s)
     return;
 
-  /* click activates */
   if (ev->type == EV_PRESS && ev->button == Button1) {
     s->active = 1;
     panel_set_focus(m);
@@ -213,7 +328,6 @@ static void input_input(Module *m, const InputEvent *ev) {
     return;
   }
 
-  /* keyboard – only if WE have focus */
   if (ev->type == EV_KEY_PRESS && panel_get_focus() != m)
     return;
 
@@ -240,7 +354,6 @@ static void input_input(Module *m, const InputEvent *ev) {
       panel_redraw();
       return;
     }
-    /* Ctrl+c – close input box (same as Escape) */
     if ((ev->state & ControlMask) && ks == XK_c) {
       s->buffer[0] = '\0';
       s->len = 0;
@@ -277,8 +390,6 @@ static void input_input(Module *m, const InputEvent *ev) {
       panel_redraw();
       return;
     }
-
-    /* Ctrl+u – clear line */
     if ((ev->state & ControlMask) && ks == XK_u) {
       s->buffer[0] = '\0';
       s->len = 0;
@@ -286,7 +397,6 @@ static void input_input(Module *m, const InputEvent *ev) {
       panel_redraw();
       return;
     }
-    /* Ctrl+w – delete last word */
     if ((ev->state & ControlMask) && ks == XK_w) {
       while (s->cursor > 0 && s->buffer[s->cursor - 1] == ' ')
         s->cursor--;
@@ -297,19 +407,16 @@ static void input_input(Module *m, const InputEvent *ev) {
       panel_redraw();
       return;
     }
-    /* Ctrl+a – start of line */
     if ((ev->state & ControlMask) && ks == XK_a) {
       s->cursor = 0;
       panel_redraw();
       return;
     }
-    /* Ctrl+e – end of line */
     if ((ev->state & ControlMask) && ks == XK_e) {
       s->cursor = s->len;
       panel_redraw();
       return;
     }
-    /* Ctrl+l – #link */
     if ((ev->state & ControlMask) && ks == XK_l) {
       const char *tag = "#link []()";
       int tlen = strlen(tag);
@@ -323,7 +430,6 @@ static void input_input(Module *m, const InputEvent *ev) {
       }
       return;
     }
-    /* Ctrl+q – #todo */
     if ((ev->state & ControlMask) && ks == XK_q) {
       const char *tag = "#todo ";
       int tlen = strlen(tag);
@@ -337,7 +443,6 @@ static void input_input(Module *m, const InputEvent *ev) {
       }
       return;
     }
-    /* Ctrl+i – #idea */
     if ((ev->state & ControlMask) && ks == XK_i) {
       const char *tag = "#idea ";
       int tlen = strlen(tag);
@@ -351,20 +456,16 @@ static void input_input(Module *m, const InputEvent *ev) {
       }
       return;
     }
-    /* Ctrl+v – paste */
     if ((ev->state & ControlMask) && (ks == XK_v || ks == XK_V)) {
       paste_clipboard(s);
       return;
     }
-    /* Ctrl+o – open in nvim */
     if ((ev->state & ControlMask) && ks == XK_o) {
       char cmd[512];
       snprintf(cmd, sizeof(cmd), "st -e nvim + %s &", BAR_THOUGHTS_FILE);
       system(cmd);
       return;
     }
-
-    /* printable character */
     if (len == 1 && buf[0] >= 32 && buf[0] <= 126 &&
         s->len < INPUT_MAX_LEN - 1) {
       memmove(s->buffer + s->cursor + 1, s->buffer + s->cursor,
@@ -396,7 +497,7 @@ static void input_destroy(Module *m) {
 
 static LayoutHints *input_hints(Module *m) {
   static LayoutHints hints = {
-      .min_h = 100, .pref_h = 140, .expand_x = 1, .expand_y = 0};
+      .min_h = 140, .pref_h = 140, .expand_x = 1, .expand_y = 0};
   return &hints;
 }
 

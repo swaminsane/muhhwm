@@ -17,6 +17,14 @@
 #include "panel_globals.h"
 #include "settings.h"
 
+static void run_cmd(const char *cmd) {
+  if (fork() == 0) {
+    setsid();
+    system(cmd);
+    _exit(0);
+  }
+}
+
 static void screenshot_init(Module *m, int x, int y, int w, int h) {
   (void)x;
   (void)y;
@@ -26,6 +34,7 @@ static void screenshot_init(Module *m, int x, int y, int w, int h) {
 
 static void screenshot_draw(Module *m, int x, int y, int w, int h,
                             int focused) {
+  /* theme background & border */
   if (m->theme) {
     XSetForeground(dpy, drw->gc, m->theme->bg);
     XFillRectangle(dpy, drw->drawable, drw->gc, x, y, w, h);
@@ -37,19 +46,53 @@ static void screenshot_draw(Module *m, int x, int y, int w, int h,
     }
   }
 
-  int pad = MODULE_PADDING, font_h = drw->fonts->h;
-  const char *label = "Screenshot";
-  int tw = drw_fontset_getwidth(drw, label);
-  drw_setscheme(drw, scheme[0]);
-  drw_text(drw, x + pad, y + (h - font_h) / 2, tw, font_h, 0, label, 0);
+  /* draw ⧉ directly, no background */
+  const char *icon = "⊙";
+  XftColor *fg = &scheme[0][ColFg];
+  Fnt *font = drw->fonts;
+  int tw = drw_fontset_getwidth(drw, icon);
+  int icon_x = x + (w - tw) / 2;
+  int icon_y = y + (h - font->h) / 2 + font->xfont->ascent;
+
+  XftDraw *xftdraw =
+      XftDrawCreate(dpy, drw->drawable, DefaultVisual(dpy, screen),
+                    DefaultColormap(dpy, screen));
+  XftDrawStringUtf8(xftdraw, fg, font->xfont, icon_x, icon_y,
+                    (const XftChar8 *)icon, strlen(icon));
+  XftDrawDestroy(xftdraw);
 }
 
-static void screenshot_input(Module *m,
-                             const InputEvent *ev) { /* placeholder */ }
+static void screenshot_input(Module *m, const InputEvent *ev) {
+  if (ev->type != EV_PRESS)
+    return;
+
+  if (ev->button == Button1) {
+    panel_hide(); /* hide panel first */
+    char cmd[512];
+    const char *dir = SCREENSHOT_DIR;
+    snprintf(cmd, sizeof(cmd),
+             "{ sleep 1; mkdir -p %s; "
+             "FILE=%s/$(date +%%%%Y-%%%%m-%%%%d_%%%%H-%%%%M-%%%%S).png; "
+             "scrot \"$FILE\"; "
+             "notify-send \"Screenshot\" \"Saved: $(basename $FILE)\"; } &",
+             dir, dir);
+    run_cmd(cmd);
+  } else if (ev->button == Button3) {
+    run_cmd("$HOME/.local/bin/menu/scrshotmenu");
+  }
+}
 
 static LayoutHints *screenshot_hints(Module *m) {
   static LayoutHints hints = {
-      .min_h = 40, .pref_h = 40, .expand_x = 1, .expand_y = 0};
+      .min_w = 50,
+      .pref_w = 50,
+      .max_w = 50,
+      .min_h = 50,
+      .pref_h = 50,
+      .max_h = 50,
+      .expand_x = 0,
+      .expand_y = 0,
+  };
   return &hints;
 }
 
@@ -60,10 +103,10 @@ Module screenshot_module = {
     .input = screenshot_input,
     .get_hints = screenshot_hints,
     .theme = (ContainerTheme *)&module_card_theme,
-    .margin_top = 8,
-    .margin_right = 8,
-    .margin_bottom = 8,
-    .margin_left = 8,
+    .margin_top = 0,
+    .margin_bottom = 0,
+    .margin_left = 0,
+    .margin_right = 0,
 };
 
 void __attribute__((constructor)) screenshot_register(void) {

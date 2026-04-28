@@ -389,7 +389,7 @@ void strip_click(int y, int button) {
 
   } else if (button == 3) {
     /* right click — open khal day view beside strip */
-    const char *cmd[] = {"/bin/sh", "-c", "$HOME/.local/bin/menu/calmenu",
+    const char *cmd[] = {"/bin/sh", "-c", "$HOME/.local/bin/menu/khalmenu",
                          NULL};
     Arg a = {.v = cmd};
     spawn(&a);

@@ -37,34 +37,33 @@ Module *panel_get_focus(void);
  *  DECLARATIVE LAYOUT TREE
  * ═══════════════════════════════════════════════════════════════════ */
 
-/* type of a node in the tree */
 enum LayoutNodeType {
-  LAYOUT_MODULE, /* leaf – just a module name */
-  LAYOUT_ROW,    /* horizontal stack of children */
-  LAYOUT_COL,    /* vertical stack of children */
+  LAYOUT_MODULE,
+  LAYOUT_ROW,
+  LAYOUT_COL,
 };
 
 typedef struct LayoutNode LayoutNode;
 struct LayoutNode {
-  int type; /* one of the enum above */
-
-  /* for LAYOUT_MODULE */
+  int type;
   const char *module_name;
+  LayoutNode *children;
+  int nchildren;
+  float weight;
+  int fixed_px;
 
-  /* for LAYOUT_ROW / LAYOUT_COL */
-  LayoutNode *children; /* array of child nodes */
-  int nchildren;        /* number of children */
+  /* ── per‑node expand flags ── */
+  int expand_x; /* 1 = allow horizontal expansion (default 1) */
+  int expand_y; /* 1 = allow vertical expansion (default 1) */
 
-  /* sizing hints in the parent's direction */
-  float weight;     /* flex weight (default 1.0) */
-  int fixed_px;     /* if >0, fixed pixel size */
-  int gap_override; /* if > 0, override container gap for this node */
+  /* ── spacing fields ── */
+  int gap; /* container gap override (0 = use default) */
+  int margin_top, margin_bottom, margin_left, margin_right;
 
-  /* optional theme for this node (if it becomes a container) */
   ContainerTheme *theme;
 };
 
 /* build the whole panel from a tree */
 Module *container_build_tree(LayoutNode *root_node);
 
-#endif
+#endif /* CONTAINER_H */

@@ -10,8 +10,9 @@ INCS = -I. -Icommon \
 
 LIBS = -lXext $(shell pkg-config --libs x11 xft fontconfig) -lm
 
-CFLAGS   = -std=c99 -pedantic -Wall -Wextra -O2 $(INCS) \
+CFLAGS   = -std=c99 -pedantic -Wall -Wextra -Wno-unused-parameter -O2 $(INCS) \
            -D_POSIX_C_SOURCE=200809L -DVERSION=\"$(VERSION)\"
+
 LDFLAGS  = $(LIBS)
 
 SRC = muhhpanl.c \

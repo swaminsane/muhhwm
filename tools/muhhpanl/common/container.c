@@ -1,5 +1,5 @@
 #include "container.h"
-#include "../../colors.h"
+#include "colors.h"
 #include "input.h"
 #include "panel.h"
 #include "panel_globals.h"
@@ -212,7 +212,6 @@ void container_layout(Module *self, int x, int y, int w, int h) {
     self->h = h;
   }
 }
-
 /* ================================================================
  *  Drawing (with margins)
  * ================================================================ */
@@ -230,6 +229,13 @@ static void container_draw(Module *self, int x, int y, int w, int h,
       continue;
 
     if (ch->has_window)
+      continue;
+
+    /* in chill mode, skip leaf modules that aren't topstrip / timeline / mpvbox
+     */
+    if (chill_mode && !ch->is_container && ch->name &&
+        strcmp(ch->name, "topstrip") != 0 &&
+        strcmp(ch->name, "timeline") != 0 && strcmp(ch->name, "mpvbox") != 0)
       continue;
 
     int cx = ch->x + ch->margin_left;
@@ -269,6 +275,13 @@ static void themed_container_draw(Module *self, int x, int y, int w, int h,
     if (ch->has_window)
       continue;
 
+    /* in chill mode, skip leaf modules that aren't topstrip / timeline / mpvbox
+     */
+    if (chill_mode && !ch->is_container && ch->name &&
+        strcmp(ch->name, "topstrip") != 0 &&
+        strcmp(ch->name, "timeline") != 0 && strcmp(ch->name, "mpvbox") != 0)
+      continue;
+
     int cx = ch->x + ch->margin_left;
     int cy = ch->y + ch->margin_top;
     int cw = ch->w - ch->margin_left - ch->margin_right;
@@ -281,7 +294,6 @@ static void themed_container_draw(Module *self, int x, int y, int w, int h,
     ch->draw(ch, cx, cy, cw, ch_h, 0);
   }
 }
-
 /* ================================================================
  *  Unified input forwarding (hit‑tested, with margins)
  * ================================================================ */
@@ -293,6 +305,12 @@ static void container_input(Module *self, const InputEvent *ev) {
     for (int i = 0; i < c->nchildren; i++) {
       Module *ch = c->children[i];
       if (!ch->input)
+        continue;
+
+      /* in chill mode, skip leaf modules that aren't kept */
+      if (chill_mode && !ch->is_container && ch->name &&
+          strcmp(ch->name, "topstrip") != 0 &&
+          strcmp(ch->name, "timeline") != 0 && strcmp(ch->name, "mpvbox") != 0)
         continue;
 
       InputEvent local = *ev;
@@ -324,6 +342,12 @@ static void container_input(Module *self, const InputEvent *ev) {
     if (!ch->input)
       continue;
 
+    /* in chill mode, skip leaf modules that aren't kept */
+    if (chill_mode && !ch->is_container && ch->name &&
+        strcmp(ch->name, "topstrip") != 0 &&
+        strcmp(ch->name, "timeline") != 0 && strcmp(ch->name, "mpvbox") != 0)
+      continue;
+
     int cx = ch->x + ch->margin_left;
     int cy = ch->y + ch->margin_top;
     int cw = ch->w - ch->margin_left - ch->margin_right;
@@ -346,11 +370,18 @@ static void container_input(Module *self, const InputEvent *ev) {
  * ================================================================ */
 static void container_timer(Module *self) {
   Container *c = (Container *)self;
-  for (int i = 0; i < c->nchildren; i++)
-    if (c->children[i]->timer)
-      c->children[i]->timer(c->children[i]);
-}
+  for (int i = 0; i < c->nchildren; i++) {
+    Module *ch = c->children[i];
+    /* in chill mode, skip leaf modules that aren't kept */
+    if (chill_mode && !ch->is_container && ch->name &&
+        strcmp(ch->name, "topstrip") != 0 &&
+        strcmp(ch->name, "timeline") != 0 && strcmp(ch->name, "mpvbox") != 0)
+      continue;
 
+    if (ch->timer)
+      ch->timer(ch);
+  }
+}
 /* ================================================================
  *  Destroy (recursively frees hints and children)
  * ================================================================ */
@@ -493,7 +524,7 @@ void container_set_padding(Module *cont, int pad) {
 
 /* ═══════════════════════════════════════════════════════════════
  *  DECLARATIVE TREE BUILDER
-q* ═══════════════════════════════════════════════════════════════ */
+ * ═══════════════════════════════════════════════════════════════ */
 Module *container_build_tree(LayoutNode *node) {
   if (!node)
     return NULL;
@@ -503,10 +534,23 @@ Module *container_build_tree(LayoutNode *node) {
     if (!node->module_name)
       return NULL;
     const char *names[] = {node->module_name, NULL};
+    Module *mod;
     if (node->theme)
-      return container_create_themed(names, 1, node->theme);
+      mod = container_create_themed(names, 1, node->theme);
     else
-      return container_create(names, 1);
+      mod = container_create(names, 1);
+
+    if (mod) {
+      /* apply per‑node margins to the underlying module */
+      Module *leaf = module_by_name(node->module_name);
+      if (leaf) {
+        leaf->margin_top = node->margin_top;
+        leaf->margin_bottom = node->margin_bottom;
+        leaf->margin_left = node->margin_left;
+        leaf->margin_right = node->margin_right;
+      }
+    }
+    return mod;
   }
 
   case LAYOUT_ROW:
@@ -518,9 +562,9 @@ Module *container_build_tree(LayoutNode *node) {
     else
       cont = container_create_manual(vertical);
 
-    /* apply gap override if set */
-    if (node->gap_override > 0)
-      container_set_gap(cont, node->gap_override);
+    /* ── apply gap override from node ── */
+    if (node->gap > 0)
+      container_set_gap(cont, node->gap);
 
     for (int i = 0; i < node->nchildren; i++) {
       LayoutNode *child_node = &node->children[i];
@@ -536,6 +580,13 @@ Module *container_build_tree(LayoutNode *node) {
           float w = child_node->weight > 0 ? child_node->weight : 1.0f;
           module_set_hints(child, 0, 0, 1, 1, w, w);
         }
+
+        /* ── apply margins from the child node ── */
+        child->margin_top = child_node->margin_top;
+        child->margin_bottom = child_node->margin_bottom;
+        child->margin_left = child_node->margin_left;
+        child->margin_right = child_node->margin_right;
+
         container_add_child(cont, child);
       }
     }

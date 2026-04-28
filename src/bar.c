@@ -459,22 +459,6 @@ void bar_notes_key(KeySym ks, unsigned int state) {
   }
 }
 
-static int muhhbar_width(void) {
-  Atom a = XInternAtom(wm.dpy, "_MUHHBAR_WIDTH", False);
-  Atom type;
-  int format;
-  unsigned long n, after;
-  unsigned char *data = NULL;
-  int w = 0;
-  if (XGetWindowProperty(wm.dpy, wm.root, a, 0, 1, False, XA_CARDINAL, &type,
-                         &format, &n, &after, &data) == Success &&
-      data) {
-    w = (int)*(unsigned long *)data;
-    XFree(data);
-  }
-  return w;
-}
-
 /* ── bar_init ──────────────────────────────────────────────────────────────
  */
 
@@ -567,8 +551,7 @@ void bar_draw(Monitor *m) {
   x = drw_text(wm.drw, x, 0, w, h, wm.lrpad / 2, ct->lt[ct->sellt]->symbol, 0);
 
   /* title area */
-  int mbw = muhhbar_width();
-  if ((w = m->bar.w - tw - x - mbw) > h) {
+  if ((w = m->bar.w - tw - x) > h) {
     if (wk_active) {
       /* which-key mode */
       drw_setscheme(wm.drw, wm.scheme[SchemeNorm]);

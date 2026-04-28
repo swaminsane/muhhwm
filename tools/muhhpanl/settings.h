@@ -32,13 +32,19 @@
 #define TEMP_STEP 100
 #define GOVERNOR_CYCLE "performance ondemand powersave"
 #define SCREENSHOT_DIR "/redmi/DCIM/Screenshots/linux"
-#define MPVSEARCH_HISTORY_MAX 100
+#define MPVSEARCH_HISTORY_MAX 1000
 #define MPVSEARCH_HISTORY_FILE "$HOME/.cache/muhhwm/mpvsearch_history"
 #define MPV_YOUTUBE_QUALITY "720p"
 #define BAR_THOUGHTS_FILE "/home/swaminsane/sync/docs/bar_thoughts.md"
 #define KDE_CONNECT_APP_CMD "kdeconnect-app &"
 #define KDE_CONNECT_FILES_CMD "kdeconnect-cli --share"
 #define PROFANITY_CMD "st -w"
+#define WEATHER_DIR "~/.cache/muhhwm/wttr"
+#define WEATHER_INTERVAL 7
+#define WEATHER_BLINK_MS 400
+#define DAYSTRIP_INTERVAL 7
+#define DAYSTRIP_BLINK_MS 400
+#define POMODORO_SCRIPT "/home/swaminsane/.local/bin/menu/pomodmenu"
 
 /* ─── power commands ──────────────────────────── */
 #define LOCK_CMD "slock"

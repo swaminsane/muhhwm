@@ -3,11 +3,11 @@
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
 #include <dirent.h>
-#include <limits.h> /* for PATH_MAX */
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h> /* for strcasecmp */
+#include <strings.h>
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
@@ -20,7 +20,8 @@
 #include "panel_globals.h"
 #include "settings.h"
 
-extern void mpvbox_play(const char *path);
+extern void mpvbox_play_mode(const char *path, const char *mode,
+                             const char *title);
 extern void mpvbox_stop(void);
 extern int mpvbox_is_playing(void);
 
@@ -42,12 +43,10 @@ typedef struct {
   int cursor_visible;
 } State;
 
-/* global pointer for external deactivation */
 State *mpvsearch_global_state = NULL;
 
 static State *st(Module *m) { return (State *)m->priv; }
 
-/* ── whitespace trim ─────────────────────────────── */
 static char *trim(char *s) {
   while (*s == ' ' || *s == '\t')
     s++;
@@ -58,7 +57,6 @@ static char *trim(char *s) {
   return s;
 }
 
-/* ── history helpers ─────────────────────────────── */
 static void hist_path(char *buf, size_t sz) {
   const char *home = getenv("HOME");
   if (!home)
@@ -119,7 +117,6 @@ static void add_hist(State *s, const char *path) {
   save_hist(s);
 }
 
-/* ── clipboard paste ─────────────────────────────── */
 static void paste_clipboard(State *s) {
   FILE *p = popen("xclip -selection clipboard -o 2>/dev/null || "
                   "xsel -bo 2>/dev/null",
@@ -141,7 +138,6 @@ static void paste_clipboard(State *s) {
   panel_redraw();
 }
 
-/* ── directory scan and auto‑play ─────────────────── */
 static int is_media_file(const char *name) {
   const char *ext = strrchr(name, '.');
   if (!ext)
@@ -184,16 +180,13 @@ static void play_directory(State *s, const char *dir_path) {
     return;
 
   qsort(files, count, sizeof(char *), name_compare);
-
-  /* For now, play the first file. Future: full playlist support. */
-  mpvbox_play(files[0]);
+  mpvbox_play_mode(files[0], "video", NULL);
 
   for (int i = 0; i < count; i++)
     free(files[i]);
   free(files);
 }
 
-/* ── callbacks ────────────────────────────────────── */
 static void init_search(Module *m, int x, int y, int w, int h) {
   State *s = calloc(1, sizeof(State));
   s->last_blink = time(NULL);
@@ -250,12 +243,11 @@ static void input_search(Module *m, const InputEvent *ev) {
   if (!s)
     return;
 
-  /* click anywhere on the bar activates typing */
   if (ev->type == EV_PRESS && ev->button == Button1 && ev->y >= 0 &&
       ev->y < m->h) {
     if (!s->active)
       s->active = 1;
-    panel_set_focus(m); /* claim focus so other modules stop typing */
+    panel_set_focus(m);
     s->len = 0;
     s->cursor = 0;
     s->input[0] = '\0';
@@ -265,7 +257,6 @@ static void input_search(Module *m, const InputEvent *ev) {
     return;
   }
 
-  /* keyboard typing */
   if (ev->type == EV_KEY_PRESS && s->active && panel_get_focus() == m) {
     XKeyEvent ke;
     KeySym ks;
@@ -301,11 +292,10 @@ static void input_search(Module *m, const InputEvent *ev) {
         if (*clean) {
           strncpy(s->current_path, clean, sizeof(s->current_path) - 1);
           add_hist(s, clean);
-
           struct stat st_buf;
-          if (stat(clean, &st_buf) == 0 && S_ISDIR(st_buf.st_mode)) {
+          if (stat(clean, &st_buf) == 0 && S_ISDIR(st_buf.st_mode))
             play_directory(s, clean);
-          } else {
+          else {
             if (!strstr(clean, "://")) {
               FILE *t = fopen(clean, "r");
               if (!t) {
@@ -315,7 +305,8 @@ static void input_search(Module *m, const InputEvent *ev) {
               }
               fclose(t);
             }
-            mpvbox_play(clean);
+            mpvbox_play_mode(clean, "video", NULL);
+            panel_redraw();
           }
         }
       }
@@ -370,6 +361,77 @@ static void input_search(Module *m, const InputEvent *ev) {
       panel_redraw();
       return;
     }
+
+    /* unified Ctrl+F source menu – now saves to history and extracts title */
+    if ((ev->state & ControlMask) && ks == XK_f) {
+      FILE *pp = popen("/home/swaminsane/.local/bin/menu/mpvsourcemenu", "r");
+      if (pp) {
+        char url[512] = "";
+        char line[512];
+        if (fgets(line, sizeof(line), pp)) {
+          line[strcspn(line, "\n")] = '\0';
+          char *tab = strchr(line, '\t');
+          char *tab2 = NULL;
+          char mode[32] = "";
+
+          if (tab) {
+            size_t urllen = tab - line;
+            if (urllen < sizeof(url)) {
+              memcpy(url, line, urllen);
+              url[urllen] = '\0';
+            }
+            tab2 = strchr(tab + 1, '\t');
+            if (tab2) {
+              size_t modelen = strlen(tab2 + 1);
+              if (modelen < sizeof(mode))
+                strncpy(mode, tab2 + 1, sizeof(mode) - 1);
+            }
+          } else {
+            strncpy(url, line, sizeof(url) - 1);
+          }
+
+          if (url[0]) {
+            /* extract title if present */
+            char title_str[256] = "";
+            if (tab) {
+              char *title_start = tab + 1;
+              char *title_end = tab2 ? tab2 : NULL;
+              if (title_end) {
+                size_t title_len = title_end - title_start - 1;
+                if (title_len > 0 && title_len < sizeof(title_str)) {
+                  memcpy(title_str, title_start, title_len);
+                  title_str[title_len] = '\0';
+                }
+              } else {
+                strncpy(title_str, title_start, sizeof(title_str) - 1);
+              }
+            }
+
+            /* ── save to history ── */
+            add_hist(s, url);
+
+            if (s->len + (int)strlen(url) < (int)sizeof(s->input) - 1) {
+              memmove(s->input + s->cursor + strlen(url), s->input + s->cursor,
+                      s->len - s->cursor + 1);
+              memcpy(s->input + s->cursor, url, strlen(url));
+              s->cursor += strlen(url);
+              s->len += strlen(url);
+            }
+            if (mode[0])
+              mpvbox_play_mode(url, mode, title_str[0] ? title_str : NULL);
+            else
+              mpvbox_play_mode(url, "video", title_str[0] ? title_str : NULL);
+            strncpy(s->current_path, url, sizeof(s->current_path) - 1);
+            panel_redraw();
+          }
+        }
+        pclose(pp);
+        panel_redraw();
+      }
+      return;
+    }
+
+    /* printable character */
     if (len == 1 && buf[0] >= 32 && buf[0] <= 126 &&
         s->len < (int)sizeof(s->input) - 1) {
       memmove(s->input + s->cursor + 1, s->input + s->cursor,

@@ -1,3 +1,4 @@
+#include "topbar.h"
 #include "config.h"
 #include "muhh.h"
 #include <X11/Xatom.h>
@@ -10,31 +11,40 @@
 #include <time.h>
 
 Window top_win = None;
-static int top_h = 0;
-static int top_expanded = 0;
-static int top_hovered = 0;
-static int drag_start_y = 0;
-static int dragging = 0;
-static int drag_threshold = 20;
 
+/* ── geometry ──────────────────────────────────── */
+static int idle_h = 4;   /* collapsed height */
+static int expand_h = 0; /* expanded height (set in init) */
+static int cur_h = 4;    /* current height */
+
+static int expanded = 0; /* 1 = mouse hovering */
+static int dragging = 0;
+static int drag_start_y = 0;
+static int drag_threshold = 20;
+static int visible = 1; /* 1 = on screen, 0 = hidden by panel */
+
+/* ── cached screen‑time string ─────────────────── */
+static char screen_time_str[64] = "";
+static time_t last_screen_time = 0;
+
+/* ── helpers ────────────────────────────────────── */
 static void topbar_draw(void);
 static void toggle_panel(void);
 
-/* read _MUHH_PANEL_VISIBLE atom – no side effects */
 static int is_panel_visible(void) {
   Atom a = XInternAtom(wm.dpy, "_MUHH_PANEL_VISIBLE", False);
   Atom type;
   int format;
   unsigned long n, after;
   unsigned char *data = NULL;
-  int visible = 0;
+  int vis = 0;
   if (XGetWindowProperty(wm.dpy, wm.root, a, 0, 1, False, XA_CARDINAL, &type,
                          &format, &n, &after, &data) == Success &&
       data) {
-    visible = *(unsigned long *)data != 0;
+    vis = *(unsigned long *)data != 0;
     XFree(data);
   }
-  return visible;
+  return vis;
 }
 
 static void toggle_panel(void) {
@@ -63,100 +73,191 @@ static void toggle_panel(void) {
   XFlush(wm.dpy);
 }
 
+/* ── battery reader ─────────────────────────────── */
+static void read_battery(int *pct, int *charging) {
+  *pct = 100;
+  *charging = 0;
+  FILE *f = fopen("/sys/class/power_supply/BAT0/capacity", "r");
+  if (f) {
+    fscanf(f, "%d", pct);
+    fclose(f);
+  }
+  f = fopen("/sys/class/power_supply/BAT0/status", "r");
+  if (f) {
+    char s[16] = {0};
+    fgets(s, sizeof(s), f);
+    fclose(f);
+    *charging = (strncmp(s, "Charging", 8) == 0);
+  }
+}
+
+/* ── screen time reader ─────────────────────────── */
+static int read_total_screen_time(void) {
+  time_t now = time(NULL);
+  struct tm *tm = localtime(&now);
+  const char *home = getenv("HOME");
+  if (!home)
+    return 0;
+  char logpath[512];
+  snprintf(logpath, sizeof(logpath),
+           "%s/.local/share/muhhwm/activity/%04d-%02d-%02d.log", home,
+           tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday);
+  FILE *f = fopen(logpath, "r");
+  if (!f)
+    return 0;
+  long long total_ms = 0;
+  char line[512];
+  while (fgets(line, sizeof(line), f)) {
+    long long ts, dur;
+    if (sscanf(line, "%lld %lld", &ts, &dur) == 2)
+      total_ms += dur;
+  }
+  fclose(f);
+  return (int)(total_ms / 60000); /* minutes */
+}
+
+/* ── update screen‑time string ──────────────────── */
+static void update_screen_time(void) {
+  int mins = read_total_screen_time();
+  snprintf(screen_time_str, sizeof(screen_time_str), "screen time %dh%02dm",
+           mins / 60, mins % 60);
+}
+
+/* ── draw the bar ───────────────────────────────── */
 static void topbar_draw(void) {
-  if (top_win == None)
+  if (top_win == None || !visible)
     return;
-  unsigned int w = (unsigned int)wm.sw;
-  unsigned int h = (unsigned int)top_h;
 
-  int bg = top_expanded ? top_edge_expanded_bg : top_edge_bg;
-  XSetForeground(wm.dpy, wm.drw->gc, bg);
-  XFillRectangle(wm.dpy, wm.drw->drawable, wm.drw->gc, 0, 0, w, h);
+  int w = wm.sw, h = cur_h;
+  drw_setscheme(wm.drw, wm.scheme[SchemeNorm]);
+  drw_rect(wm.drw, 0, 0, w, h, 1, 1); /* background fill */
 
-  if (top_expanded) {
-    const char *island_text = "island";
-    int tw = drw_fontset_getwidth(wm.drw, island_text);
-    int island_w = tw + 20;
-    int island_h = h - 6;
-    int island_x = (w - island_w) / 2;
-    int island_y = 3;
+  if (!expanded) {
+    drw_map(wm.drw, top_win, 0, 0, w, h);
+    return; /* idle: just a thin line */
+  }
 
-    XSetForeground(wm.dpy, wm.drw->gc, island_bg);
-    XFillRectangle(wm.dpy, wm.drw->drawable, wm.drw->gc, island_x, island_y,
-                   island_w, island_h);
+  int font_h = wm.drw->fonts->h;
+  int pad = 6;
 
-    XSetForeground(wm.dpy, wm.drw->gc, top_edge_text_color);
-    drw_text(wm.drw, island_x + 10,
-             island_y + (island_h - wm.drw->fonts->h) / 2, tw, wm.drw->fonts->h,
-             0, island_text, 0);
+  /* ── left: screen time + battery ── */
+  int bat_pct, charging;
+  read_battery(&bat_pct, &charging);
 
-    time_t now = time(NULL);
-    struct tm *tm = localtime(&now);
-    char time_str[6];
-    strftime(time_str, sizeof(time_str), "%H:%M", tm);
-    int tw_clock = drw_fontset_getwidth(wm.drw, time_str);
-    int clock_y = (h - wm.drw->fonts->h) / 2;
-    XSetForeground(wm.dpy, wm.drw->gc, top_edge_text_color);
-    drw_text(wm.drw, 10, clock_y, tw_clock, wm.drw->fonts->h, 0, time_str, 0);
+  /* screen time string (already updated in tick) */
+  char st_str[64];
+  int mins = read_total_screen_time();
+  snprintf(st_str, sizeof(st_str), "screen time %dh%02dm ", mins / 60,
+           mins % 60);
+
+  /* draw screen time in normal scheme */
+  drw_setscheme(wm.drw, wm.scheme[SchemeNorm]);
+  drw_text(wm.drw, pad, 0, TEXTW(st_str), h, 0, st_str, 0);
+
+  /* battery percentage */
+  char bstr[16];
+  if (charging)
+    snprintf(bstr, sizeof(bstr), "%d%% *", bat_pct);
+  else
+    snprintf(bstr, sizeof(bstr), "%d%%", bat_pct);
+
+  int bscheme = SchemeNorm;
+  if (charging)
+    bscheme = SchemeSel; /* green accent */
+  else if (bat_pct < 15)
+    bscheme = SchemeUrg; /* red */
+  else if (bat_pct < 30)
+    bscheme = SchemeNorm; /* orange accent not defined, normal for now */
+
+  drw_setscheme(wm.drw, wm.scheme[bscheme]);
+  drw_text(wm.drw, pad + TEXTW(st_str), 0, TEXTW(bstr), h, 0, bstr, 0);
+
+  /* ── centre: clock ── */
+  time_t now = time(NULL);
+  struct tm *tm = localtime(&now);
+  char clock_str[16];
+  strftime(clock_str, sizeof(clock_str), "%H:%M:%S", tm);
+  int cw = TEXTW(clock_str);
+  drw_setscheme(wm.drw, wm.scheme[SchemeNorm]);
+  drw_text(wm.drw, (w - cw) / 2, 0, cw, h, 0, clock_str, 0);
+
+  /* ── right: now‑playing ── */
+  Atom a = XInternAtom(wm.dpy, "_MUHH_MPV_TITLE", False);
+  Atom type;
+  int format;
+  unsigned long nitems, after;
+  unsigned char *data = NULL;
+  char np_str[128] = "";
+  if (XGetWindowProperty(wm.dpy, wm.root, a, 0, 100, False, XA_STRING, &type,
+                         &format, &nitems, &after, &data) == Success &&
+      data) {
+    snprintf(np_str, sizeof(np_str), "Playing: %s", (char *)data);
+    XFree(data);
+  }
+
+  if (np_str[0]) {
+    int nw = TEXTW(np_str);
+    int max_w = w / 3;
+    while (nw > max_w && strlen(np_str) > 4) {
+      np_str[strlen(np_str) - 1] = '\0';
+      nw = TEXTW(np_str);
+    }
+    drw_setscheme(wm.drw, wm.scheme[SchemeNorm]);
+    drw_text(wm.drw, w - nw - pad, 0, nw, h, 0, np_str, 0);
   }
 
   drw_map(wm.drw, top_win, 0, 0, w, h);
 }
 
+/* ── init ───────────────────────────────────────── */
 void topbar_init(void) {
+  expand_h = wm.drw->fonts->h + 4; /* expanded height based on font */
+  cur_h = idle_h;
+
   XSetWindowAttributes wa;
   wa.override_redirect = True;
-  wa.background_pixel = top_edge_bg;
+  wa.background_pixel = wm.scheme[SchemeNorm][ColBg].pixel;
   wa.event_mask = EnterWindowMask | LeaveWindowMask | ButtonPressMask |
-                  ButtonReleaseMask | PointerMotionMask | Button4MotionMask |
-                  Button5MotionMask | ExposureMask;
-  top_h = top_edge_zone;
-  top_win = XCreateWindow(wm.dpy, wm.root, 0, 0, (unsigned int)wm.sw,
-                          (unsigned int)top_h, 0, CopyFromParent, InputOutput,
-                          CopyFromParent,
+                  Button4MotionMask | Button5MotionMask | PointerMotionMask |
+                  ButtonReleaseMask | ExposureMask;
+  top_win = XCreateWindow(wm.dpy, wm.root, 0, 0, wm.sw, cur_h, 0,
+                          CopyFromParent, InputOutput, CopyFromParent,
                           CWOverrideRedirect | CWBackPixel | CWEventMask, &wa);
   XMapRaised(wm.dpy, top_win);
-
-  /* force scroll‑down and scroll‑up events to reach us */
-  XGrabButton(wm.dpy, Button4, AnyModifier, top_win, True, ButtonPressMask,
-              GrabModeAsync, GrabModeAsync, None, None);
-  XGrabButton(wm.dpy, Button5, AnyModifier, top_win, True, ButtonPressMask,
-              GrabModeAsync, GrabModeAsync, None, None);
-
-  topbar_draw(); /* never hidden */
+  update_screen_time();
+  topbar_draw();
 }
 
+/* ── event handling ────────────────────────────── */
 int topbar_handle_event(XEvent *e) {
-  if (e->xany.window != top_win)
+  if (e->xany.window != top_win || !visible)
     return 0;
 
   switch (e->type) {
   case EnterNotify:
-    top_hovered = 1;
-    if (!top_expanded) {
-      top_expanded = 1;
-      top_h = top_edge_expanded;
-      XResizeWindow(wm.dpy, top_win, (unsigned int)wm.sw, (unsigned int)top_h);
+    if (!expanded) {
+      expanded = 1;
+      cur_h = expand_h;
+      XResizeWindow(wm.dpy, top_win, wm.sw, cur_h);
       topbar_draw();
     }
     break;
   case LeaveNotify:
-    top_hovered = 0;
-    if (top_expanded && !dragging) {
-      top_expanded = 0;
-      top_h = top_edge_zone;
-      XResizeWindow(wm.dpy, top_win, (unsigned int)wm.sw, (unsigned int)top_h);
+    if (expanded && !dragging) {
+      expanded = 0;
+      cur_h = idle_h;
+      XResizeWindow(wm.dpy, top_win, wm.sw, cur_h);
       topbar_draw();
     }
     break;
   case ButtonPress:
-    if (e->xbutton.button == Button4) { /* scroll‑up */
+    if (e->xbutton.button == Button4) { /* scroll up → close */
       if (is_panel_visible())
-        toggle_panel();                        /* close panel */
-    } else if (e->xbutton.button == Button5) { /* scroll‑down */
+        toggle_panel();
+    } else if (e->xbutton.button == Button5) { /* scroll down → open */
       if (!is_panel_visible())
-        toggle_panel();                        /* open panel */
-    } else if (e->xbutton.button == Button1) { /* left click drag */
+        toggle_panel();
+    } else if (e->xbutton.button == Button1) { /* drag start */
       drag_start_y = e->xbutton.y_root;
       dragging = 1;
       XGrabPointer(wm.dpy, top_win, False,
@@ -168,7 +269,7 @@ int topbar_handle_event(XEvent *e) {
     if (dragging) {
       int dy = e->xmotion.y_root - drag_start_y;
       if (dy > drag_threshold) {
-        toggle_panel(); /* drag down opens / hides */
+        toggle_panel();
         dragging = 0;
         XUngrabPointer(wm.dpy, CurrentTime);
       }
@@ -188,19 +289,30 @@ int topbar_handle_event(XEvent *e) {
   return 1;
 }
 
+/* ── visibility toggle (called when panel toggles) ── */
 void topbar_update_visibility(void) {
   int panel_open = is_panel_visible();
-
-  if (panel_open) {
-    /* Panel is visible – hide the trigger bar completely */
+  if (panel_open && visible) {
     XUnmapWindow(wm.dpy, top_win);
-  } else {
-    /* Panel closed – show the trigger bar again (thin, idle state) */
+    visible = 0;
+  } else if (!panel_open && !visible) {
     XMapRaised(wm.dpy, top_win);
-    if (top_expanded) {
-      top_expanded = 0;
-      top_h = top_edge_zone;
-      XResizeWindow(wm.dpy, top_win, (unsigned int)wm.sw, (unsigned int)top_h);
+    visible = 1;
+    topbar_draw();
+  }
+}
+
+/* ── periodic tick ──────────────────────────────── */
+void topbar_tick(void) {
+  if (!visible)
+    return;
+  static time_t last_clock = 0;
+  time_t now = time(NULL);
+  if (now != last_clock) { /* every second */
+    last_clock = now;
+    if (now - last_screen_time >= 30) {
+      update_screen_time();
+      last_screen_time = now;
     }
     topbar_draw();
   }

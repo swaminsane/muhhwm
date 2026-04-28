@@ -1144,6 +1144,23 @@ void x11_focus(Client *c) {
   }
   ns->sel = c;
   activity_focus(c);
+  /* ── update panel atoms so muhhpanl can show workspace + window title ── */
+  {
+    Atom a_ws = XInternAtom(wm.dpy, "_MUHH_CURRENT_WORKSPACE", False);
+    Atom a_title = XInternAtom(wm.dpy, "_MUHH_ACTIVE_WINDOW_TITLE", False);
+    Namespace *ns = SELNS();
+    int tag = (ns->sel && ns->sel->tags)
+                  ? __builtin_ctz(ns->tagset[ns->seltags]) + 1
+                  : 1;
+    char ws[64];
+    snprintf(ws, sizeof(ws), "%s/%d", ns->name, tag);
+    XChangeProperty(wm.dpy, wm.root, a_ws, XA_STRING, 8, PropModeReplace,
+                    (unsigned char *)ws, strlen(ws));
+
+    const char *title = c ? c->name : "";
+    XChangeProperty(wm.dpy, wm.root, a_title, XA_STRING, 8, PropModeReplace,
+                    (unsigned char *)title, strlen(title));
+  }
   Monitor *m;
   for (m = wm.mons; m; m = m->next)
     bar_draw(m);
@@ -1385,7 +1402,7 @@ void x11_run(void) {
   while (wm.running) {
     /* wait up to 10 seconds for an X event */
     fd_set fds;
-    struct timeval tv = {10, 0};
+    struct timeval tv = {1, 0};
     FD_ZERO(&fds);
     FD_SET(xfd, &fds);
     select(xfd + 1, &fds, NULL, NULL, &tv);
@@ -1396,7 +1413,7 @@ void x11_run(void) {
       strip_tick();
       last_strip_tick = now;
     }
-
+    topbar_tick();
     /* drain all pending X events */
     while (XPending(wm.dpy)) {
       XNextEvent(wm.dpy, &ev);
@@ -1663,6 +1680,11 @@ void togglebar(const Arg *arg) {
   XMoveResizeWindow(wm.dpy, wm.selmon->bar.win, wm.selmon->wx, wm.selmon->bar.y,
                     wm.selmon->bar.w, h);
   x11_arrange(wm.selmon);
+}
+
+void toggleboth(const Arg *arg) {
+  togglebar(NULL);
+  togglestrip(NULL);
 }
 
 void togglefloating(const Arg *arg) {

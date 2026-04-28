@@ -218,7 +218,6 @@ void x11_focus(Client *c);
 void x11_scan(void);
 void tile(Monitor *m);
 void monocle(Monitor *m);
-/* x11.c - window management functions */
 void focusstack(const Arg *arg);
 void incnmaster(const Arg *arg);
 void killclient(const Arg *arg);
@@ -230,6 +229,7 @@ void setmfact(const Arg *arg);
 void spawn(const Arg *arg);
 void tag(const Arg *arg);
 void togglebar(const Arg *arg);
+void toggleboth(const Arg *arg);
 void togglefloating(const Arg *arg);
 void toggletag(const Arg *arg);
 void zoom(const Arg *arg);
@@ -241,6 +241,7 @@ void tagadjacent(const Arg *arg);
 void whichkey(const Arg *arg);
 void barnotes(const Arg *arg);
 void x11_grabkeys(void);
+void topbar_tick(void);
 
 /* bar.c */
 void bar_init(Monitor *m);
