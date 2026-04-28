@@ -189,7 +189,7 @@ static void music_draw(Module *m, int x, int y, int w, int h, int focused) {
 
   if (!s->playing && s->title[0] == '\0') {
     drw_setscheme(drw, scheme[0]);
-    const char *msg = "No media";
+    const char *msg = "No MPC media";
     int tw = drw_fontset_getwidth(drw, msg);
     int fh = drw->fonts->h;
     drw_text(drw, x + (w - tw) / 2, y + (h - fh) / 2, tw, fh, 0, msg, 0);

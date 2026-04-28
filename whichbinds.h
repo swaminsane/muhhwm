@@ -97,9 +97,8 @@ static WhichKey wk_system[] = {
     WK_PREFIX('s', "settings+", wk_settings),
 };
 
-static WhichKey wk_root[] = {
-    WK_PREFIX('s', "system+", wk_system),
-    WK_PREFIX('o', "open+", wk_open),
-};
+static WhichKey wk_root[] = {WK_PREFIX('s', "system+", wk_system),
+                             WK_PREFIX('o', "open+", wk_open),
+                             WK_LEAF(XK_space, "panl", "muhhtoggle")};
 
 #endif /* WHICHBINDS_H */
