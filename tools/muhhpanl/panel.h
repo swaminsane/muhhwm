@@ -8,7 +8,7 @@
 static const int panel_width_pct = 100;
 static const int panel_left_gap = 0;
 static const int panel_right_gap = 0;
-static const int panel_height_pct = 87;
+static const int panel_height_pct = 90;
 
 /* ── Module name strings ────────────────────────── */
 #define M_TOPSTRIP "topstrip"
@@ -18,6 +18,7 @@ static const int panel_height_pct = 87;
 #define M_MID_CALENDAR "calendar"
 #define M_MID_POMODORO "pomodoro"
 #define M_MID_MUSIC "music"
+#define M_MID_MPRIS "mpris"
 #define M_MID_TEXTSMENU "textsmenu"
 #define M_RIGHT_CLOCK "clock"
 #define M_RIGHT_WIFI "wifi"
