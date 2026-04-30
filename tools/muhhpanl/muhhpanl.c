@@ -82,22 +82,32 @@ LayoutNode layout_tree =
           {.type = LAYOUT_MODULE, .module_name = M_MID_DAYSTRIP, .fixed_px = 24},
           {.type = LAYOUT_MODULE, .module_name = M_MID_CALENDAR, .weight = 1.0f},
           {.type = LAYOUT_MODULE, .module_name = M_MID_POMODORO, .fixed_px = 24},
-          {.type = 0}}, .nchildren = 3},
+          /* spacer between pomodoro and music */
+          {.type = LAYOUT_COL, .fixed_px = 4,
+           .children = (LayoutNode[]){{.type = 0}}, .nchildren = 0},
+          {.type = 0}}, .nchildren = 4},
 
-     /* ── music sub‑panel (55%) – centres mpc + mpris ── */
+     /* ── music sub‑panel (55%) – centering mpc + mpris ── */
      {.type = LAYOUT_COL, .weight = 47.0f,
       .children = (LayoutNode[]){
           /* top spacer */
           {.type = LAYOUT_COL, .weight = 1.0f,
            .children = (LayoutNode[]){{.type = 0}}, .nchildren = 0},
-          /* mpc */
-          {.type = LAYOUT_MODULE, .module_name = M_MID_MUSIC, .weight = 1.0f},
-          /* mpris */
-          {.type = LAYOUT_MODULE, .module_name = M_MID_MPRIS, .weight = 1.0f},
+          /* fixed‑height block containing both */
+          {.type = LAYOUT_COL, .fixed_px = 184, .gap = 4,
+           .children = (LayoutNode[]){
+               {.type = LAYOUT_MODULE, .module_name = M_MID_MUSIC, .fixed_px = 56},
+               {.type = LAYOUT_COL, .fixed_px = 124,
+                .children = (LayoutNode[]){
+                    {.type = LAYOUT_MODULE, .module_name = M_MID_MPRIS, .weight = 1.0f},
+                    {.type = 0}
+                }, .nchildren = 1},
+               {.type = 0}
+           }, .nchildren = 2},
           /* bottom spacer */
           {.type = LAYOUT_COL, .weight = 1.0f,
            .children = (LayoutNode[]){{.type = 0}}, .nchildren = 0},
-          {.type = 0}}, .nchildren = 4},
+          {.type = 0}}, .nchildren = 3},
 
      /* ── bottom sub‑panel (10%) – textsmenu + smsinput at the bottom ── */
      {.type = LAYOUT_COL, .weight = 13.0f,
@@ -163,10 +173,7 @@ LayoutNode layout_tree =
                                  /* Bluetooth */
                                  {.type = LAYOUT_COL, .fixed_px = 50,
                                   .children = (LayoutNode[]){{.type = LAYOUT_MODULE, .module_name = M_RIGHT_BT, .fixed_px = 50}, {.type = 0}}, .nchildren = 1},
-                                 /* CPU governor */
-                                 {.type = LAYOUT_COL, .fixed_px = 50,
-                                  .children = (LayoutNode[]){{.type = LAYOUT_MODULE, .module_name = M_RIGHT_CPU, .fixed_px = 50}, {.type = 0}}, .nchildren = 1},
-                                 /* Screenshot */
+                                /* Screenshot */
                                  {.type = LAYOUT_COL, .fixed_px = 50,
                                   .children = (LayoutNode[]){{.type = LAYOUT_MODULE, .module_name = M_RIGHT_SCR, .fixed_px = 50}, {.type = 0}}, .nchildren = 1},
                                  /* Audio sink */
@@ -176,7 +183,7 @@ LayoutNode layout_tree =
                                  {.type = LAYOUT_COL, .fixed_px = 50,
                                   .children = (LayoutNode[]){{.type = LAYOUT_MODULE, .module_name = M_ADB, .fixed_px = 50}, {.type = 0}}, .nchildren = 1},
                                  {.type = LAYOUT_COL, .weight = 1.0f, .children = (LayoutNode[]){{.type = 0}}, .nchildren = 0},
-                                 {.type = 0}}, .nchildren = 8},
+                                 {.type = 0}}, .nchildren = 7},
                             /* bottom spacer */
                             {.type = LAYOUT_COL, .weight = 1.0f, .children = (LayoutNode[]){{.type = 0}}, .nchildren = 0},
                             {.type = 0}}, .nchildren = 3},
@@ -221,7 +228,6 @@ LayoutNode layout_tree =
         {.type = 0}},
     .nchildren = 3
 };
-
 /* ── forward declarations ───────────────────────── */
 static void init_scheme(void);
 static int get_bar_height(void);

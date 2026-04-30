@@ -90,6 +90,7 @@ static WhichKey wk_settings[] = {
     WK_LEAF('m', "muhhwm", "st -e nvim $HOME/.local/src/muhhwm/"),
     WK_LEAF('w', "wi-fi", "connectmenu --wifi"),
     WK_LEAF('b', "bluetooth", "connectmenu --bluetooth"),
+    WK_LEAF('W', "live wallp", "muhhweatherwall &"), // or your launch script
 };
 
 static WhichKey wk_system[] = {

@@ -91,6 +91,45 @@ static void read_battery(int *pct, int *charging) {
   }
 }
 
+/* ── CPU temperature reader ─────────────────────── */
+static int read_cpu_temp(void) {
+  const char *paths[] = {"/sys/class/thermal/thermal_zone0/temp",
+                         "/sys/class/hwmon/hwmon0/temp1_input",
+                         "/sys/class/hwmon/hwmon1/temp1_input", NULL};
+  for (int i = 0; paths[i]; i++) {
+    FILE *f = fopen(paths[i], "r");
+    if (f) {
+      int temp;
+      if (fscanf(f, "%d", &temp) == 1) {
+        fclose(f);
+        return temp / 1000; /* sysfs gives millidegrees */
+      }
+      fclose(f);
+    }
+  }
+  return -1;
+}
+
+/* ── memory usage reader ────────────────────────── */
+static int read_memory_usage(void) {
+  FILE *f = fopen("/proc/meminfo", "r");
+  if (!f)
+    return -1;
+  long total = 0, available = 0;
+  char line[256];
+  while (fgets(line, sizeof(line), f)) {
+    if (strncmp(line, "MemTotal:", 9) == 0)
+      sscanf(line, "MemTotal: %ld kB", &total);
+    else if (strncmp(line, "MemAvailable:", 13) == 0)
+      sscanf(line, "MemAvailable: %ld kB", &available);
+  }
+  fclose(f);
+  if (total == 0)
+    return -1;
+  long used = total - available;
+  return (int)((used * 100) / total);
+}
+
 /* ── screen time reader ─────────────────────────── */
 static int read_total_screen_time(void) {
   time_t now = time(NULL);
@@ -140,19 +179,19 @@ static void topbar_draw(void) {
   int font_h = wm.drw->fonts->h;
   int pad = 6;
 
-  /* ── left: screen time + battery ── */
+  /* ── left: screen time + battery + CPU temp + memory ── */
   int bat_pct, charging;
   read_battery(&bat_pct, &charging);
 
-  /* screen time string (already updated in tick) */
-  char st_str[64];
   int mins = read_total_screen_time();
+  char st_str[64];
   snprintf(st_str, sizeof(st_str), "screen time %dh%02dm ", mins / 60,
            mins % 60);
 
   /* draw screen time in normal scheme */
   drw_setscheme(wm.drw, wm.scheme[SchemeNorm]);
-  drw_text(wm.drw, pad, 0, TEXTW(st_str), h, 0, st_str, 0);
+  int st_w = TEXTW(st_str);
+  drw_text(wm.drw, pad, 0, st_w, h, 0, st_str, 0);
 
   /* battery percentage */
   char bstr[16];
@@ -167,10 +206,43 @@ static void topbar_draw(void) {
   else if (bat_pct < 15)
     bscheme = SchemeUrg; /* red */
   else if (bat_pct < 30)
-    bscheme = SchemeNorm; /* orange accent not defined, normal for now */
+    bscheme = SchemeNorm; /* normal */
 
   drw_setscheme(wm.drw, wm.scheme[bscheme]);
-  drw_text(wm.drw, pad + TEXTW(st_str), 0, TEXTW(bstr), h, 0, bstr, 0);
+  int bstr_w = TEXTW(bstr);
+  drw_text(wm.drw, pad + st_w, 0, bstr_w, h, 0, bstr, 0);
+
+  /* CPU temperature */
+  int cpu_temp = read_cpu_temp();
+  if (cpu_temp >= 0) {
+    char cpu_str[32];
+    snprintf(cpu_str, sizeof(cpu_str), "θ %d°", cpu_temp);
+    int cpu_scheme = SchemeNorm;
+    if (cpu_temp > 80)
+      cpu_scheme = SchemeUrg;
+    else if (cpu_temp > 60)
+      cpu_scheme = SchemeSel;
+    drw_setscheme(wm.drw, wm.scheme[cpu_scheme]);
+    int cpu_w = TEXTW(cpu_str);
+    int cpu_x = pad + st_w + bstr_w;
+    drw_text(wm.drw, cpu_x, 0, cpu_w, h, 0, cpu_str, 0);
+
+    /* memory usage */
+    int mem_usage = read_memory_usage();
+    if (mem_usage >= 0) {
+      char mem_str[32];
+      snprintf(mem_str, sizeof(mem_str), "η %d%%", mem_usage);
+      int mem_scheme = SchemeNorm;
+      if (mem_usage > 90)
+        mem_scheme = SchemeUrg;
+      else if (mem_usage > 70)
+        mem_scheme = SchemeSel;
+      drw_setscheme(wm.drw, wm.scheme[mem_scheme]);
+      int mem_w = TEXTW(mem_str);
+      int mem_x = cpu_x + cpu_w;
+      drw_text(wm.drw, mem_x, 0, mem_w, h, 0, mem_str, 0);
+    }
+  }
 
   /* ── centre: clock ── */
   time_t now = time(NULL);

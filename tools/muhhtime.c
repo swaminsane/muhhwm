@@ -1,5 +1,5 @@
-/* muhhtime.c - muhhwm activity dashboard
- * usage: muhhtime [today|week|month|DATE]
+/* muhhtime.c – muhhwm activity dashboard
+ * usage: muhhtime [today|week|month|DATE|tabs|recent|rawtoday]
  * compile: cc -o muhhtime tools/muhhtime.c
  */
 
@@ -130,7 +130,6 @@ static void extract_domain(const char *title, char *out, size_t sz) {
   while (*p == ' ')
     p++;
   strncpy(out, p, sz - 1);
-  /* strip trailing whitespace */
   size_t len = strlen(out);
   while (len > 0 && isspace((unsigned char)out[len - 1]))
     out[--len] = '\0';
@@ -143,7 +142,6 @@ static void extract_nvim_file(const char *title, char *out, size_t sz) {
     p++;
   else
     p = title;
-  /* skip "NVIM " prefix if present */
   if (strncmp(p, "NVIM ", 5) == 0)
     p += 5;
   strncpy(out, p, sz - 1);
@@ -168,31 +166,24 @@ static void aggregate(long long from, long long to) {
     if (e->ts < from || e->ts >= to)
       continue;
 
-    /* namespace time */
     kv_add(ns_time, &n_ns, 8, e->ns, e->dur_ms);
-
-    /* window class time */
     kv_add(win_time, &n_win, 64, e->cls, e->dur_ms);
 
-    /* nvim files */
     if (strstr(e->title, "NVIM") || strstr(e->title, "nvim")) {
       extract_nvim_file(e->title, key, sizeof key);
       if (key[0])
         kv_add(file_time, &n_file, 256, key, e->dur_ms);
     }
 
-    /* st directory */
     if (strcmp(e->cls, "St") == 0 && strncmp(e->title, "st: ", 4) == 0) {
       extract_st_dir(e->title, key, sizeof key);
       if (key[0])
         kv_add(file_time, &n_file, 256, key, e->dur_ms);
     }
 
-    /* firefox/surf sites */
     if (strcmp(e->cls, "firefox") == 0 || strcmp(e->cls, "Firefox") == 0 ||
         strcmp(e->cls, "firefox-esr") == 0 || strcmp(e->cls, "Surf") == 0 ||
         strcmp(e->cls, "tabbed") == 0) {
-      /* skip useless titles */
       if (strncmp(e->title, "tabbed-", 7) == 0)
         continue;
       if (strncmp(e->title, "st: ", 4) == 0)
@@ -203,19 +194,16 @@ static void aggregate(long long from, long long to) {
         continue;
       if (strcmp(e->title, "broken") == 0)
         continue;
-      /* strip surf loading indicator [X%] prefix */
       const char *t = e->title;
       if (t[0] == '[') {
         const char *p = strchr(t, ']');
         if (p)
           t = p + 2;
       }
-      /* strip surf keybind prefix "X | " */
       if (strstr(t, " | ")) {
         const char *p = strstr(t, " | ");
         t = p + 3;
       }
-      /* strip Mozilla Firefox suffix */
       char clean[256];
       strncpy(clean, t, sizeof clean - 1);
       clean[sizeof clean - 1] = '\0';
@@ -226,11 +214,9 @@ static void aggregate(long long from, long long to) {
         *moz = '\0';
       t = clean;
 
-      /* domain for default view */
       extract_domain(t, key, sizeof key);
       if (key[0])
         kv_add(site_time, &n_site, 256, key, e->dur_ms);
-      /* full title for tabs view */
       if (t[0]) {
         char labeled[280];
         const char *browser =
@@ -241,12 +227,10 @@ static void aggregate(long long from, long long to) {
         kv_add(tab_time, &n_tab, 512, labeled, e->dur_ms);
       }
     }
+  }
+}
 
-  } /* end for loop */
-} /* end aggregate */
-
-/* ── rendering
- * ───────────────────────────────────────────────────────────── */
+/* ── rendering ───────────────────────────────────────────────────────────── */
 
 static void fmt_duration(long long ms, char *out, size_t sz) {
   long long s = ms / 1000;
@@ -323,7 +307,7 @@ static void print_hourly(long long from, long long to) {
 
 static void print_streaks(long long from, long long to) {
   long long longest = 0, total_dur = 0, switches = 0;
-  long long streak_start = 0, streak_dur = 0;
+  long long streak_dur = 0;
   char streak_ns[32] = {0};
   int i;
 
@@ -340,7 +324,6 @@ static void print_streaks(long long from, long long to) {
         longest = streak_dur;
       }
       strncpy(streak_ns, e->ns, sizeof streak_ns - 1);
-      streak_start = e->ts;
       streak_dur = e->dur_ms;
     }
   }
@@ -355,16 +338,14 @@ static void print_streaks(long long from, long long to) {
   printf("  total active     %s\n", total);
   printf("  longest streak   %s\n", dur);
   printf("  focus switches   %lld\n", switches);
-  if (switches > 0)
-    printf("  avg per window   ");
-  char avg[32];
-  fmt_duration(switches > 0 ? total_dur / switches : 0, avg, sizeof avg);
-  printf("%s\n", avg);
-  (void)streak_start;
+  if (switches > 0) {
+    char avg[32];
+    fmt_duration(total_dur / switches, avg, sizeof avg);
+    printf("  avg per window   %s\n", avg);
+  }
 }
 
-/* ── date helpers
- * ───────────────────────────────────────────────────────────
+/* ── date helpers ───────────────────────────────────────────────────────────
  */
 
 static long long day_start(time_t t) {
@@ -380,8 +361,7 @@ static long long week_start(time_t t) {
   return (long long)mktime(tm);
 }
 
-/* ── main
- * ───────────────────────────────────────────────────────────────────
+/* ── main ───────────────────────────────────────────────────────────────────
  */
 
 int main(int argc, char *argv[]) {
@@ -392,7 +372,7 @@ int main(int argc, char *argv[]) {
   if (!load_log())
     return 1;
 
-  /* parse range argument */
+  /* ── route by first argument ─────────────────── */
   if (argc < 2 || strcmp(argv[1], "today") == 0) {
     from = day_start(now);
     to = from + 86400;
@@ -442,6 +422,50 @@ int main(int argc, char *argv[]) {
     }
     printf("\n");
     return 0;
+  } else if (strcmp(argv[1], "rawtoday") == 0) {
+    /* Raw output for panel consumption */
+    from = day_start(now);
+    to = from + 86400;
+
+    aggregate(from, to);
+
+    /* total active minutes */
+    long long total_active_min = 0;
+    for (int i = 0; i < n_ns; i++)
+      total_active_min += ns_time[i].ms / 60000;
+    printf("total active %lld\n", total_active_min);
+
+    /* namespace minutes (study, code, free) */
+    long long ns_min[3] = {0, 0, 0};
+    for (int i = 0; i < n_ns; i++) {
+      if (strcmp(ns_time[i].key, "study") == 0)
+        ns_min[0] = ns_time[i].ms / 60000;
+      else if (strcmp(ns_time[i].key, "code") == 0)
+        ns_min[1] = ns_time[i].ms / 60000;
+      else if (strcmp(ns_time[i].key, "free") == 0)
+        ns_min[2] = ns_time[i].ms / 60000;
+    }
+    printf("study %lld\n", ns_min[0]);
+    printf("code %lld\n", ns_min[1]);
+    printf("free %lld\n", ns_min[2]);
+
+    /* hourly activity (minutes) */
+    long long hour_ms[24] = {0};
+    for (int i = 0; i < nentries; i++) {
+      Entry *e = &entries[i];
+      if (e->ts < from || e->ts >= to)
+        continue;
+      struct tm *t = localtime((time_t *)&e->ts);
+      int h = t->tm_hour;
+      hour_ms[h] += e->dur_ms;
+    }
+    for (int h = 0; h < 24; h++) {
+      long long mins = hour_ms[h] / 60000;
+      if (mins > 0)
+        printf("hour %02d %lld\n", h, mins);
+    }
+
+    return 0;
   } else {
     /* try parsing as YYYY-MM-DD */
     struct tm tm = {0};
@@ -450,38 +474,26 @@ int main(int argc, char *argv[]) {
       to = from + 86400;
       snprintf(label, sizeof label, "%s", argv[1]);
     } else {
-      fprintf(stderr, "usage: muhhtime [today|week|month|YYYY-MM-DD]\n");
+      fprintf(stderr,
+              "usage: muhhtime [today|week|month|YYYY-MM-DD|rawtoday]\n");
       return 1;
     }
   }
 
+  /* ── standard display ────────────────────────── */
   aggregate(from, to);
 
-  /* header */
   printf("\n");
   print_separator();
   printf("  muhhtime — %s\n", label);
   print_separator();
 
-  /* namespace breakdown */
   print_kv_section("NAMESPACES", ns_time, n_ns, 8);
-
-  /* hourly */
   print_hourly(from, to);
-
-  /* streaks */
   print_streaks(from, to);
-
-  /* top windows */
   print_kv_section("TOP WINDOWS", win_time, n_win, 6);
-
-  /* nvim files / st dirs */
   print_kv_section("NVIM / TERMINAL", file_time, n_file, 10);
-
-  /* firefox */
   print_kv_section("FIREFOX", site_time, n_site, 10);
-
-  /* mpv */
   print_kv_section("MPV", media_time, n_media, 10);
 
   printf("\n");

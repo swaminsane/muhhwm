@@ -73,8 +73,8 @@ static void power_draw(Module *m, int x, int y, int w, int h, int focused) {
     XDrawRectangle(dpy, drw->drawable, drw->gc, box_x, box_y, box_w - 1,
                    box_h - 1);
 
-    /* centred text */
-    drw_setscheme(drw, scheme[0]);
+    /* centred text – accent colour (red) */
+    drw_setscheme(drw, scheme[3]); /* scheme[3] = fg:COL_RED, bg:COL_BG */
     drw_text(drw, box_x + (box_w - label_w) / 2, box_y + (box_h - font_h) / 2,
              label_w, font_h, 0, label, 0);
     return;

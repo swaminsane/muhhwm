@@ -176,8 +176,13 @@ static void bri_draw(Module *m, int x, int y, int w, int h, int focused) {
     if (track_len < 16)
       track_len = 16;
     int knob_size = 10;
+    int bar_h = 6; /* thick bar, matching volume module */
+    int bar_center_y =
+        br_y + br_h / 2 -
+        bar_h / 2; /* vertically centred in the br_y..br_y+br_h area */
+
     int knob_x =
-        track_start + (s->brightness / 100.0f * track_len) - (knob_size / 2);
+        track_start + (int)(s->brightness / 100.0f * track_len) - knob_size / 2;
     if (knob_x < track_start)
       knob_x = track_start;
     if (knob_x + knob_size > track_end)
@@ -188,13 +193,17 @@ static void bri_draw(Module *m, int x, int y, int w, int h, int focused) {
                 s->brightness > 50 ? COL_RED : COL_GREEN, &tc);
     XAllocColor(dpy, DefaultColormap(dpy, screen), &tc);
     XSetForeground(dpy, drw->gc, tc.pixel);
-    XFillRectangle(dpy, drw->drawable, drw->gc, track_start,
-                   br_y + br_h / 2 - 1, knob_x - track_start, 2);
+
+    /* filled part */
+    XFillRectangle(dpy, drw->drawable, drw->gc, track_start, bar_center_y,
+                   knob_x - track_start, bar_h);
+    /* remaining part */
     XSetForeground(dpy, drw->gc, 0x3b4252);
     XFillRectangle(dpy, drw->drawable, drw->gc, knob_x + knob_size,
-                   br_y + br_h / 2 - 1, track_end - (knob_x + knob_size), 2);
+                   bar_center_y, track_end - (knob_x + knob_size), bar_h);
 
-    int knob_y = br_y + (br_h - knob_size) / 2;
+    /* knob (centred on the thick track) */
+    int knob_y = bar_center_y + bar_h / 2 - knob_size / 2;
     XSetForeground(dpy, drw->gc, s->label_color.pixel);
     XFillRectangle(dpy, drw->drawable, drw->gc, knob_x + 1, knob_y + 1,
                    knob_size - 2, knob_size - 2);
@@ -221,8 +230,11 @@ static void bri_draw(Module *m, int x, int y, int w, int h, int focused) {
     if (track_len < 16)
       track_len = 16;
     int knob_size = 10;
+    int bar_h = 6;                                  /* thick bar */
+    int bar_center_y = tp_y + tp_h / 2 - bar_h / 2; /* vertically centred */
+
     float frac = (float)(s->temperature - TEMP_MIN) / (TEMP_MAX - TEMP_MIN);
-    int knob_x = track_start + (int)(frac * track_len) - (knob_size / 2);
+    int knob_x = track_start + (int)(frac * track_len) - knob_size / 2;
     if (knob_x < track_start)
       knob_x = track_start;
     if (knob_x + knob_size > track_end)
@@ -230,13 +242,17 @@ static void bri_draw(Module *m, int x, int y, int w, int h, int focused) {
 
     unsigned long tcol = temp_track_color(s->temperature);
     XSetForeground(dpy, drw->gc, tcol);
-    XFillRectangle(dpy, drw->drawable, drw->gc, track_start,
-                   tp_y + tp_h / 2 - 1, knob_x - track_start, 2);
+
+    /* filled part */
+    XFillRectangle(dpy, drw->drawable, drw->gc, track_start, bar_center_y,
+                   knob_x - track_start, bar_h);
+    /* remaining part */
     XSetForeground(dpy, drw->gc, 0x3b4252);
     XFillRectangle(dpy, drw->drawable, drw->gc, knob_x + knob_size,
-                   tp_y + tp_h / 2 - 1, track_end - (knob_x + knob_size), 2);
+                   bar_center_y, track_end - (knob_x + knob_size), bar_h);
 
-    int knob_y = tp_y + (tp_h - knob_size) / 2;
+    /* knob */
+    int knob_y = bar_center_y + bar_h / 2 - knob_size / 2;
     XSetForeground(dpy, drw->gc, s->label_color.pixel);
     XFillRectangle(dpy, drw->drawable, drw->gc, knob_x + 1, knob_y + 1,
                    knob_size - 2, knob_size - 2);
@@ -245,8 +261,6 @@ static void bri_draw(Module *m, int x, int y, int w, int h, int focused) {
                    knob_size - 1);
   }
 }
-
-// … (everything before bri_input stays the same) …
 
 static void bri_input(Module *m, const InputEvent *ev) {
   BriState *s = (BriState *)m->priv;

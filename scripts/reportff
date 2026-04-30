@@ -1,0 +1,942 @@
+#!/usr/bin/env python3
+"""
+ffreport  —  Monthly Firefox History PDF/HTML Report Generator
+Usage:  ffreport YYYY/MM   (e.g.  ffreport 2025/08)
+
+Reads daily JSON history dumps from
+    ~/.local/share/firefox/history/YYYY/MM/
+and writes a designed report to
+    ~/.local/share/firefox/history-export/YYYY/MM/YYYY-MM-report.html
+                                          …/YYYY-MM-report.pdf   (if WeasyPrint available)
+
+All configuration flags are at the top of this file.
+"""
+
+import argparse
+import calendar
+import json
+import sys
+from collections import Counter, defaultdict
+from datetime import datetime, timedelta
+from pathlib import Path
+
+# ── Optional dependencies ────────────────────────────────────────────────────
+try:
+    from jinja2 import Template
+except ImportError as exc:
+    raise SystemExit(
+        "ERROR: jinja2 is required. Install it with:\n"
+        "    pip install jinja2"
+    ) from exc
+
+try:
+    from weasyprint import HTML
+    WEASYPRINT_OK = True
+except ImportError:
+    WEASYPRINT_OK = False
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CONFIGURATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+BASE_HISTORY_DIR = Path.home() / ".local/share/firefox/history"
+BASE_EXPORT_DIR  = Path.home() / ".local/share/firefox/history-export"
+
+SESSION_GAP_MINUTES          = 30         # idle minutes before a new session (time‑based)
+DOMAIN_DEEP_DIVE_MIN_VISITS  = 69         # minimum visits to appear in Domain Deep‑Dive
+TRANSITION_MIN_COUNT         = 10         # minimum transition count to show
+MAX_SESSIONS                 = 50         # top N sessions by duration
+INLINE_REFERENCES            = True       # show [R-x.y] tags inside tables
+
+DARK_MODE                    = False      # dark colour scheme + adds '-d' to output filename
+
+MEDIA_DOMAINS = [
+    "youtube.com",
+    "m.youtube.com",
+    "youtu.be",
+    "invidious.snopyta.org",
+    "odysee.com",
+]
+
+GENERIC_VIDEO_TITLES = {
+    "", "youtube", "youtube - history", "youtube - subscriptions",
+    "youtube - feed", "invidious", "odysee", "yewtube",
+}
+
+CATEGORY_RULES = [
+    ("entertainment", ["youtube.com", "youtu.be", "miruro.tv", "pahe.win",
+                       "kwik.cx", "thetvapp.to", "tvpass.org", "instagram.com"]),
+    ("research",      ["google.com", "bing.com", "duckduckgo.com", "archive.org",
+                       "ukiyo-e.org", "data.ukiyo-e.org", "jaodb.com",
+                       "nationalarchives.gov.uk", "lyx.org", "mfa.org",
+                       "syngof.fr", "ukiyoe-gallery.com",
+                       "stackoverflow.com", "unix.stackexchange.com",
+                       "reddit.com"]),
+    ("work",          ["github.com", "gitlab.com", "localhost", "chatgpt.com",
+                       "openai.com", "chat.deepseek.com"]),
+    ("admin",         ["bceceboard.bihar.gov.in", "admissions.nic.in",
+                       "gov.in", "gov.uk"]),
+]
+
+CATEGORY_COLORS = {
+    "entertainment": "#c25e00",
+    "research":      "#2e5aac",
+    "work":          "#3a7d44",
+    "admin":         "#8b6914",
+    "other":         "#6b6b6b",
+}
+
+DOMAIN_ALIASES = {}   # e.g. {"m.youtube.com": "youtube.com"}
+
+GENERATE_PDF   = True
+AUTO_OPEN_PDF  = False
+
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def parse_ts(ts: str) -> datetime:
+    return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+
+def fmt_dur(seconds: float) -> str:
+    if seconds < 60:
+        return f"{int(seconds)}s"
+    mins = int(seconds // 60)
+    secs = int(seconds % 60)
+    if mins < 60:
+        return f"{mins}m {secs}s"
+    hrs = mins // 60
+    mins %= 60
+    return f"{hrs}h {mins}m {secs}s"
+
+def fmt_clock(dt: datetime) -> str:
+    return dt.strftime("%H:%M")
+
+def normalize_domain(domain: str) -> str:
+    if not domain:
+        return "local-files"
+    domain = domain.lower().replace("www.", "")
+    return DOMAIN_ALIASES.get(domain, domain)
+
+def categorize(domain: str) -> str:
+    for cat, frags in CATEGORY_RULES:
+        if any(frag in domain for frag in frags):
+            return cat
+    return "other"
+
+# ── Data loading ──
+def load_entries(input_dir: Path):
+    entries = []
+    if not input_dir.exists():
+        raise SystemExit(f"ERROR: Input directory not found: {input_dir}")
+    json_files = sorted(input_dir.glob("*.json"))
+    if not json_files:
+        raise SystemExit(f"ERROR: No .json files in {input_dir}")
+    for jfile in json_files:
+        with open(jfile, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        for rec in data.get("entries", []):
+            base = {
+                "url": rec.get("url", ""),
+                "title": rec.get("title", "") or "",
+                "domain": normalize_domain(rec.get("domain", "")),
+                "visit_count": rec.get("visit_count", 1),
+                "typed_count": rec.get("typed_count", 0),
+                "frecency": rec.get("frecency", 0),
+            }
+            for v in rec.get("visits", []):
+                entry = {
+                    **base,
+                    "visit_id": v["visit_id"],
+                    "from_visit": v.get("from_visit", 0),
+                    "timestamp_raw": v["timestamp"],
+                    "timestamp": parse_ts(v["timestamp"]),
+                    "visit_type": v.get("visit_type", "unknown"),
+                }
+                entries.append(entry)
+    entries.sort(key=lambda x: x["timestamp"])
+    return entries
+
+def load_search_queries(input_dir: Path):
+    queries = []
+    for jfile in sorted(input_dir.glob("*.json")):
+        with open(jfile, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        for q in data.get("search_queries", []):
+            if "last_searched" not in q:
+                continue
+            queries.append(q)
+    return queries
+
+# ── Dwell & sessions ──
+def compute_dwell(entries: list):
+    gap_sec = SESSION_GAP_MINUTES * 60
+    for i in range(len(entries)):
+        if i + 1 < len(entries):
+            diff = (entries[i+1]["timestamp"] - entries[i]["timestamp"]).total_seconds()
+            entries[i]["dwell"] = diff if diff < gap_sec else 0
+        else:
+            entries[i]["dwell"] = 0
+
+def build_sessions(entries: list):
+    sessions = []
+    cur = []
+    for e in entries:
+        if not cur:
+            cur.append(e)
+            continue
+        gap = (e["timestamp"] - cur[-1]["timestamp"]).total_seconds()
+        if gap > SESSION_GAP_MINUTES * 60:
+            sessions.append(cur)
+            cur = [e]
+        else:
+            cur.append(e)
+    if cur:
+        sessions.append(cur)
+    return sessions
+
+# ── Reference system ──
+def build_references(entries: list):
+    domain_urls = defaultdict(list)
+    domain_first = {}
+    url_seen = set()
+    for e in entries:
+        d = e["domain"]
+        u = e["url"]
+        t = e.get("title", "")
+        ts = e["timestamp"]
+        if d not in domain_first or ts < domain_first[d]:
+            domain_first[d] = ts
+        if u not in url_seen:
+            url_seen.add(u)
+            domain_urls[d].append((u, t))
+    sorted_domains = sorted(domain_first.keys(), key=lambda d: domain_first[d])
+
+    ref_map = {}
+    domain_prefix = {}
+    domain_url_list = {}
+    domain_top_title = {}
+
+    for idx, d in enumerate(sorted_domains, 1):
+        prefix = f"R-{idx}"
+        domain_prefix[d] = prefix
+        urls = domain_urls[d]
+        titles = Counter()
+        for u, t in urls:
+            titles[t] += 1
+        domain_top_title[d] = titles.most_common(1)[0][0] if titles else ""
+
+        entries_out = []
+        for j, (u, t) in enumerate(urls, 1):
+            ref = f"{prefix}.{j}"
+            ref_map[u] = ref
+            entries_out.append({"url": u, "title": t or "", "ref": ref})
+        domain_url_list[d] = entries_out
+
+    return ref_map, domain_prefix, domain_url_list, domain_top_title
+
+# ── Main compilation ──
+def compile_all(entries, sessions, ref_map, domain_prefix, domain_url_list, domain_top_title):
+    total_visits = len(entries)
+    unique_urls = len({e["url"] for e in entries})
+    unique_domains = len({e["domain"] for e in entries})
+    total_seconds = sum(e.get("dwell", 0) for e in entries)
+    first_ts = entries[0]["timestamp"]
+    last_ts = entries[-1]["timestamp"]
+    days_in_month = calendar.monthrange(last_ts.year, last_ts.month)[1]
+
+    # daily pulse
+    daily = Counter()
+    for e in entries:
+        daily[e["timestamp"].day] += 1
+    max_day_visits = max(daily.values()) if daily else 1
+
+    # hourly heatmap
+    heatmap = {d: {h: 0 for h in range(24)} for d in range(1, days_in_month+1)}
+    for e in entries:
+        heatmap[e["timestamp"].day][e["timestamp"].hour] += 1
+
+    # categories
+    cat_stats = defaultdict(lambda: {"visits": 0, "seconds": 0})
+    for e in entries:
+        c = categorize(e["domain"])
+        cat_stats[c]["visits"] += 1
+        cat_stats[c]["seconds"] += e.get("dwell", 0)
+
+    # domain deep-dive (filtered)
+    dom_stats = defaultdict(lambda: {
+        "visits": 0, "dwell_total": 0, "dwell_n": 0,
+        "first": None, "last": None, "titles": Counter(), "urls": set()
+    })
+    for e in entries:
+        d = e["domain"]
+        s = dom_stats[d]
+        s["visits"] += 1
+        if e.get("dwell", 0) > 0:
+            s["dwell_total"] += e["dwell"]
+            s["dwell_n"] += 1
+        if s["first"] is None or e["timestamp"] < s["first"]:
+            s["first"] = e["timestamp"]
+        if s["last"] is None or e["timestamp"] > s["last"]:
+            s["last"] = e["timestamp"]
+        if e["title"]:
+            s["titles"][e["title"]] += 1
+        s["urls"].add(e["url"])
+
+    domain_rows = []
+    for d in sorted(dom_stats.keys(), key=lambda x: dom_stats[x]["visits"], reverse=True):
+        s = dom_stats[d]
+        if s["visits"] < DOMAIN_DEEP_DIVE_MIN_VISITS:
+            continue
+        avg_dwell = (s["dwell_total"] / s["dwell_n"]) if s["dwell_n"] else 0
+        top_title = s["titles"].most_common(1)[0][0] if s["titles"] else ""
+        refs = [ref_map[u] for u in s["urls"] if u in ref_map]
+        refs.sort()
+        domain_rows.append({
+            "domain": d,
+            "visits": s["visits"],
+            "time": fmt_dur(s["dwell_total"]),
+            "avg_dwell": fmt_dur(avg_dwell),
+            "window": f"{fmt_clock(s['first'])} – {fmt_clock(s['last'])}",
+            "top_title": top_title[:45] + ("…" if len(top_title) > 45 else ""),
+            "category": categorize(d),
+            "refs": refs,
+            "prefix": domain_prefix.get(d, ""),
+        })
+
+    # transitions (filtered)
+    trans = defaultdict(lambda: {"count": 0, "dwell_after": []})
+    for sess in sessions:
+        for i in range(len(sess)-1):
+            a = sess[i]["domain"]
+            b = sess[i+1]["domain"]
+            if a == b:
+                continue
+            trans[(a,b)]["count"] += 1
+            trans[(a,b)]["dwell_after"].append(sess[i+1].get("dwell", 0))
+
+    trans_rows = []
+    for (a,b), data in sorted(trans.items(), key=lambda x: x[1]["count"], reverse=True):
+        if data["count"] < TRANSITION_MIN_COUNT:
+            continue
+        avg_after = sum(data["dwell_after"])/len(data["dwell_after"]) if data["dwell_after"] else 0
+        trans_rows.append({
+            "from": a, "to": b, "count": data["count"],
+            "avg_after": fmt_dur(avg_after),
+            "from_ref": domain_prefix.get(a, ""),
+            "to_ref": domain_prefix.get(b, ""),
+        })
+
+    # sessions (tree rendering)
+    session_objs = []
+    for sess in sessions:
+        if not sess:
+            continue
+        start = sess[0]["timestamp"]
+        end = sess[-1]["timestamp"]
+        dur_sec = (end - start).total_seconds()
+        cats = Counter(categorize(e["domain"]) for e in sess)
+        main_cat = cats.most_common(1)[0][0] if cats else "other"
+
+        sess_ids = {e["visit_id"]: e for e in sess}
+        child_map = defaultdict(list)
+        roots = []
+        for e in sess:
+            pid = e.get("from_visit", 0)
+            if pid in sess_ids:
+                child_map[pid].append(e)
+            else:
+                roots.append(e)
+        roots.sort(key=lambda x: x["timestamp"])
+        for k in child_map:
+            child_map[k].sort(key=lambda x: x["timestamp"])
+
+        def render_tree(node, depth=0, is_last=False, ancestors=None):
+            if ancestors is None:
+                ancestors = set()
+            lines = []
+            prefix = "  " * depth
+            connector = "└─" if is_last and depth > 0 else ("├─" if depth > 0 else "")
+            time_str = fmt_clock(node["timestamp"])
+            dwell_str = fmt_dur(node.get("dwell", 0)) if node.get("dwell", 0) > 0 else "0s"
+            title = node.get("title", "")[:38] + ("…" if len(node.get("title", "")) > 38 else "")
+            ref = ref_map.get(node["url"], "")
+            backtrack = node["domain"] in ancestors
+            mark = " ↩" if backtrack else ""
+            line = f"{prefix}{connector} [{dwell_str}] {time_str}  {node['domain']}{mark}  {title}"
+            if ref and INLINE_REFERENCES:
+                line += f"  [{ref}]"
+            lines.append(line)
+            children = child_map.get(node["visit_id"], [])
+            for i, child in enumerate(children):
+                lines.extend(render_tree(child, depth+1, i==len(children)-1, ancestors | {node["domain"]}))
+            return lines
+
+        chain_text = []
+        for i, root in enumerate(roots):
+            chain_text.extend(render_tree(root, 0, i==len(roots)-1))
+
+        session_objs.append({
+            "start": fmt_clock(start),
+            "end": fmt_clock(end),
+            "date": start.strftime("%b %d"),
+            "duration": fmt_dur(dur_sec),
+            "category": main_cat,
+            "chain_text": chain_text,
+        })
+
+    session_objs.sort(key=lambda x: x["duration"], reverse=True)
+    session_objs = session_objs[:MAX_SESSIONS]
+
+    return {
+        "total_visits": total_visits,
+        "unique_urls": unique_urls,
+        "unique_domains": unique_domains,
+        "total_time": fmt_dur(total_seconds),
+        "first_date": first_ts.strftime("%Y-%m-%d"),
+        "last_date": last_ts.strftime("%Y-%m-%d"),
+        "daily": daily,
+        "max_day_visits": max_day_visits,
+        "days_in_month": days_in_month,
+        "heatmap": heatmap,
+        "categories": cat_stats,
+        "domain_rows": domain_rows,
+        "sessions": session_objs,
+        "transitions": trans_rows,
+    }
+
+# ── Search query cards ──
+def build_query_cards(raw_queries, domain_prefix):
+    by_engine = defaultdict(list)
+    for q in raw_queries:
+        eng = q.get("engine", "unknown")
+        text = q.get("query", "")
+        if not text:
+            continue
+        ts = parse_ts(q.get("last_searched", "1970-01-01T00:00:00+00:00"))
+        by_engine[eng].append({
+            "query": text,
+            "searched_on": ts.strftime("%Y-%m-%d"),
+            "count": q.get("count", 1),
+            "domain": q.get("domain", ""),
+        })
+
+    for eng in by_engine:
+        merged = {}
+        for card in by_engine[eng]:
+            txt = card["query"]
+            if txt in merged:
+                merged[txt]["count"] += card["count"]
+                if card["searched_on"] < merged[txt]["searched_on"]:
+                    merged[txt]["searched_on"] = card["searched_on"]
+            else:
+                merged[txt] = card
+        by_engine[eng] = sorted(merged.values(), key=lambda c: c["count"], reverse=True)
+
+    engine_order = sorted(by_engine.keys(), key=lambda e: len(by_engine[e]), reverse=True)
+    result = {}
+    for eng in engine_order:
+        cards = by_engine[eng]
+        for c in cards:
+            c["ref"] = domain_prefix.get(c["domain"], "")
+        result[eng] = cards
+    return result
+
+# ── Videos watched ──
+def build_video_cards(entries, domain_prefix):
+    generic_lower = {t.lower() for t in GENERIC_VIDEO_TITLES}
+    by_title = defaultdict(list)
+    for e in entries:
+        if e["domain"] not in MEDIA_DOMAINS:
+            continue
+        title = e.get("title", "").strip()
+        if title.lower() in generic_lower:
+            continue
+        by_title[title].append(e)
+
+    cards = []
+    for title, visits in by_title.items():
+        count = len(visits)
+        first_ts = min(v["timestamp"] for v in visits)
+        domain = visits[0]["domain"]
+        ref = domain_prefix.get(domain, "")
+        cards.append({
+            "title": title,
+            "count": count,
+            "date": first_ts.strftime("%b %d %H:%M"),
+            "ref": ref,
+        })
+    cards.sort(key=lambda c: c["date"], reverse=True)
+    return cards
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# HTML TEMPLATE
+# ═══════════════════════════════════════════════════════════════════════════════
+
+HTML_TEMPLATE = r"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Digital Activity Report - {{ year }}-{{ "%02d"|format(month) }}</title>
+<style>
+@page {
+  size: A4;
+  margin: 1.8cm;
+  @bottom-center {
+    content: counter(page) " / " counter(pages);
+    font: 8pt "Courier New", monospace;
+    color: #888;
+  }
+}
+{% if dark_mode %}
+:root {
+  --bg: #121212;
+  --ink: #e0e0e0;
+  --muted: #999;
+  --line: #333;
+  --ent: {{ colors.entertainment }};
+  --res: {{ colors.research }};
+  --work: {{ colors.work }};
+  --adm: {{ colors.admin }};
+  --oth: {{ colors.other }};
+}
+body { background: var(--bg); }
+h2 { border-bottom-color: var(--ink); }
+.data th { color: var(--muted); }
+.muted { color: var(--muted); }
+.cover .meta { border-top-color: var(--line); }
+.bar-track { background: #333; }
+.heatmap th { background: #1e1e1e; }
+{% else %}
+:root {
+  --bg: #faf9f7;
+  --ink: #1a1a1a;
+  --muted: #6b6b6b;
+  --line: #d0d0d0;
+  --ent: {{ colors.entertainment }};
+  --res: {{ colors.research }};
+  --work: {{ colors.work }};
+  --adm: {{ colors.admin }};
+  --oth: {{ colors.other }};
+}
+{% endif %}
+
+* { box-sizing: border-box; }
+body {
+  font: 9.5pt/1.45 "Helvetica Neue", Helvetica, Arial, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+  margin: 0;
+  padding: 0;
+}
+
+/* Cover */
+.cover {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  page-break-after: always;
+}
+.cover h1 {
+  font: 700 38pt/1.1 "Helvetica Neue", sans-serif;
+  letter-spacing: -0.03em;
+  margin: 0;
+}
+.cover .subtitle {
+  font: 12pt/1.5 "Courier New", monospace;
+  color: var(--muted);
+  margin-top: 1.2cm;
+}
+.cover .meta {
+  margin-top: auto;
+  font: 9pt "Courier New", monospace;
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+  padding-top: 0.4cm;
+}
+
+/* Sections */
+section { page-break-inside: avoid; margin-bottom: 1.2cm; }
+h2 {
+  font: 700 15pt/1 "Helvetica Neue", sans-serif;
+  letter-spacing: -0.02em;
+  margin: 1.2cm 0 0.5cm;
+  padding-bottom: 0.15cm;
+  border-bottom: 2px solid var(--ink);
+}
+h3 {
+  font: 600 10pt/1 "Helvetica Neue", sans-serif;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0.8cm 0 0.3cm;
+}
+
+/* Executive bars */
+.bar-row { display:flex; align-items:center; margin:0.12cm 0; font:9pt "Courier New",monospace; }
+.bar-label { width:3.2cm; text-align:right; padding-right:0.35cm; }
+.bar-track { flex:1; height:0.45cm; background:#e8e6e3; border-radius:2px; overflow:hidden; }
+.bar-fill { height:100%; border-radius:2px; }
+.bar-pct { width:1.4cm; text-align:right; padding-left:0.25cm; font-weight:600; }
+.bar-detail { width:3.5cm; padding-left:0.35cm; color:var(--muted); font-size:7.5pt; }
+
+/* Daily pulse */
+.pulse-row { display:flex; align-items:center; font:8.5pt "Courier New",monospace; margin:0.08cm 0; height:0.65cm; }
+.pulse-day { width:1.6cm; color:var(--muted); line-height:1; }
+.pulse-track { flex:1; height:0.4cm; background:#e8e6e3; border-radius:1px; }
+.pulse-fill { height:100%; background:var(--ink); border-radius:1px; }
+.pulse-n { width:2cm; text-align:right; padding-left:0.3cm; line-height:1.1; white-space:pre; }
+
+/* Heatmap */
+.heatmap { font:7.5pt "Courier New",monospace; border-collapse:collapse; width:100%; }
+.heatmap th,.heatmap td { width:0.55cm; height:0.55cm; text-align:center; border:1px solid #e0e0e0; padding:0; }
+.heatmap th { background:#f0f0f0; font-weight:400; }
+.h0 { background:#fff; color:#ccc; }
+.h1 { background:#ede8e0; }
+.h2 { background:#d4c8b8; }
+.h3 { background:#bba890; }
+.h4 { background:#a28868; color:#fff; }
+.h5 { background:#896840; color:#fff; }
+
+/* Cards */
+.card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.3cm; }
+.card { border: 1px solid var(--line); padding: 0.25cm; page-break-inside: avoid; }
+.card .ctext { font: 8.5pt/1.2 "Courier New", monospace; }
+.card .cdate { font: 7pt/1 "Helvetica Neue", sans-serif; color: var(--muted); margin-top: 0.1cm; }
+.card .ccount { font-size:7pt; color:var(--muted); float:right; }
+.card .cref { font-size:7pt; color:var(--muted); margin-left:0.2cm; }
+
+/* Data tables */
+.data { width:100%; font:9pt/1.35 "Helvetica Neue",sans-serif; border-collapse:collapse; }
+.data th { text-align:left; font-weight:600; font-size:7.5pt; text-transform:uppercase; letter-spacing:0.04em; color:var(--muted); padding:0.18cm 0.12cm; border-bottom:1px solid #bbb; }
+.data td { padding:0.15cm 0.12cm; border-bottom:1px solid #e8e8e8; vertical-align:top; }
+.data tr { page-break-inside:avoid; }
+
+/* Sessions */
+.session { border-left:2.5px solid #ccc; padding-left:0.45cm; margin:0.35cm 0; }
+.session-header { font:8.5pt "Courier New",monospace; color:var(--muted); margin-bottom:0.15cm; }
+.session-tag { display:inline-block; padding:0.04cm 0.18cm; border-radius:2px; font:7pt/1 "Helvetica Neue",sans-serif; text-transform:uppercase; letter-spacing:0.04em; margin-left:0.2cm; }
+.chain-tree { font:8pt/1.55 "Courier New",monospace; color:var(--ink); white-space:pre-wrap; margin:0.1cm 0; }
+
+/* Transition web */
+.trans { font:9pt "Courier New",monospace; }
+.trans td { padding:0.12cm; }
+
+/* Reference Index */
+.ref-block { margin:0.4cm 0; page-break-inside:avoid; }
+.ref-domain { font:10pt/1 "Helvetica Neue",sans-serif; font-weight:600; margin-bottom:0.15cm; }
+.ref-top-title { font:8pt "Courier New",monospace; color:var(--muted); margin-bottom:0.1cm; }
+.ref-entry { font:8.5pt "Courier New",monospace; color:var(--ink); margin:0.08cm 0; }
+.ref-entry .reftitle { font-weight:600; }
+.ref-url { color:var(--muted); font-size:7.5pt; display:block; padding-left:0.4cm; }
+
+.muted { color:var(--muted); }
+.mono { font-family:"Courier New",monospace; }
+.page-break { page-break-after:always; }
+</style>
+</head>
+<body>
+
+<!-- COVER -->
+<div class="cover">
+  <h1>Digital Activity<br>Report</h1>
+  <div class="subtitle">
+    {{ year }}–{{ "%02d"|format(month) }}<br>
+    {{ total_visits }} visits · {{ unique_urls }} URLs · {{ unique_domains }} domains · {{ total_time }}
+  </div>
+  <div class="meta">
+    Period {{ first_date }} → {{ last_date }}<br>
+    Generated {{ generated_at }}<br>
+    Firefox History Analytics
+  </div>
+</div>
+
+<!-- EXECUTIVE SUMMARY -->
+<section>
+  <h2>Executive Summary</h2>
+  {% for cat in cat_order %}
+    {% set s = categories[cat] %}
+    {% set pct = (s.visits / total_visits * 100)|round(0)|int if total_visits else 0 %}
+    <div class="bar-row">
+      <div class="bar-label" style="text-transform:capitalize;">{{ cat }}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:{{ pct }}%; background:{{ colors[cat] }};"></div></div>
+      <div class="bar-pct">{{ pct }}%</div>
+      <div class="bar-detail">{{ s.visits }} visits, {{ fmt_dur(s.seconds) }}</div>
+    </div>
+  {% endfor %}
+</section>
+
+<!-- DAILY PULSE -->
+<section>
+  <h2>Daily Pulse</h2>
+  {% for d in range(1, days_in_month+1) %}
+    {% set n = daily.get(d, 0) %}
+    {% set w = (n / max_day_visits * 100)|round(0)|int if max_day_visits else 0 %}
+    <div class="pulse-row">
+      <div class="pulse-day">{{ "%02d"|format(month) }}-{{ "%02d"|format(d) }}</div>
+      <div class="pulse-track"><div class="pulse-fill" style="width:{{ w }}%;"></div></div>
+      <div class="pulse-n">{{ n }}<br>visit{{ "s" if n != 1 else "" }}</div>
+    </div>
+  {% endfor %}
+</section>
+
+<div class="page-break"></div>
+
+<!-- HOURLY HEATMAP -->
+<section>
+  <h2>Hourly Heatmap</h2>
+  <p class="muted" style="margin-bottom:0.3cm; font-size:8pt;">
+    Each row is a day of the month. Darker cells = more visits in that hour.
+  </p>
+  <table class="heatmap">
+    <tr><th style="width:1.2cm;"></th>{% for h in range(24) %}<th>{{ "%02d"|format(h) }}</th>{% endfor %}</tr>
+    {% for d in range(1, days_in_month+1) %}
+    <tr>
+      <th>{{ "%02d"|format(d) }}</th>
+      {% for h in range(24) %}
+        {% set n = heatmap[d][h] %}
+        {% set cls = "h0" %}
+        {% if n > 0 %}{% set cls = "h1" %}{% endif %}
+        {% if n >= 25 %}{% set cls = "h2" %}{% endif %}
+        {% if n >= 50 %}{% set cls = "h3" %}{% endif %}
+        {% if n >= 75 %}{% set cls = "h4" %}{% endif %}
+        {% if n >= 100 %}{% set cls = "h5" %}{% endif %}
+        <td class="{{ cls }}">{{ n if n > 0 else "·" }}</td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </table>
+</section>
+
+<!-- SEARCH QUERY LOG -->
+<section>
+  <h2>Search Query Log</h2>
+  {% for engine, cards in query_cards.items() %}
+  <h3>{{ engine|capitalize }} ({{ cards|length }} queries)</h3>
+  <div class="card-grid">
+    {% for card in cards %}
+    <div class="card">
+      <div class="ctext">
+        {% if card.count > 1 %}<span class="ccount">×{{ card.count }}</span>{% endif %}
+        {% if card.query|length > 25 %}{{ card.query[:22] ~ '…' }}{% else %}{{ card.query }}{% endif %}
+      </div>
+      <div class="cdate">{{ card.searched_on }} {% if card.ref %}<span class="cref">[{{ card.ref }}]</span>{% endif %}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</section>
+
+<!-- VIDEOS WATCHED -->
+{% if video_cards %}
+<section>
+  <h2>Videos Watched</h2>
+  <div class="card-grid">
+    {% for v in video_cards %}
+    <div class="card">
+      <div class="ctext">
+        {% if v.count > 1 %}<span class="ccount">×{{ v.count }}</span>{% endif %}
+        {% if v.title|length > 25 %}{{ v.title[:22] ~ '…' }}{% else %}{{ v.title }}{% endif %}
+      </div>
+      <div class="cdate">{{ v.date }} {% if v.ref %}<span class="cref">[{{ v.ref }}]</span>{% endif %}</div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<div class="page-break"></div>
+
+<!-- DOMAIN DEEP-DIVE -->
+<section>
+  <h2>Domain Deep-Dive</h2>
+  <table class="data">
+    <tr>
+      <th>Domain</th><th>Visits</th><th>Time</th><th>Avg Dwell</th><th>Primary Window</th><th>Top Page</th>
+      {% if inline_refs %}<th>Refs</th>{% endif %}
+    </tr>
+    {% for row in domain_rows %}
+    <tr>
+      <td><strong>{{ row.domain }}</strong></td>
+      <td>{{ row.visits }}</td>
+      <td>{{ row.time }}</td>
+      <td>{{ row.avg_dwell }}</td>
+      <td class="mono">{{ row.window }}</td>
+      <td class="muted" style="font-size:8pt;">{{ row.top_title }}</td>
+      {% if inline_refs %}<td class="mono" style="font-size:7.5pt;">{{ row.prefix }} ({{ row.refs|length }})</td>{% endif %}
+    </tr>
+    {% endfor %}
+  </table>
+</section>
+
+<div class="page-break"></div>
+
+<!-- DOMAIN TRANSITION WEB -->
+<section>
+  <h2>Domain Transition Web</h2>
+  <table class="data trans">
+    <tr><th>From</th><th>→</th><th>To</th><th>Count</th><th>Avg Dwell After</th>{% if inline_refs %}<th>Refs</th>{% endif %}</tr>
+    {% for t in transitions %}
+    <tr>
+      <td>{{ t.from }}</td><td>→</td><td>{{ t.to }}</td>
+      <td>{{ t.count }}</td><td>{{ t.avg_after }}</td>
+      {% if inline_refs %}<td class="mono">{{ t.from_ref }} → {{ t.to_ref }}</td>{% endif %}
+    </tr>
+    {% endfor %}
+  </table>
+</section>
+
+<div class="page-break"></div>
+
+<!-- SESSION ARCHAEOLOGY -->
+<section>
+  <h2>Session Archaeology</h2>
+  <p class="muted" style="font-size:8pt; margin-bottom:0.4cm;">
+    Top {{ sessions|length }} sessions by duration. Indentation = click depth. ↩ = backtrack.
+  </p>
+  {% for sess in sessions %}
+  <div class="session">
+    <div class="session-header">
+      {{ sess.date }} · {{ sess.start }} – {{ sess.end }} · {{ sess.duration }}
+      <span class="session-tag" style="background:{{ colors[sess.category] }}22; color:{{ colors[sess.category] }};">{{ sess.category }}</span>
+    </div>
+    <div class="chain-tree">{{ sess.chain_text | join('\n') }}</div>
+  </div>
+  {% endfor %}
+</section>
+
+<div class="page-break"></div>
+
+<!-- REFERENCE INDEX -->
+<section>
+  <h2>Reference Index</h2>
+  {% for domain in ref_domains %}
+  <div class="ref-block">
+    <div class="ref-domain">{{ domain_prefix[domain] }} &nbsp;{{ domain }}</div>
+    {% if domain_top_title[domain] %}<div class="ref-top-title">Most used: {{ domain_top_title[domain] }}</div>{% endif %}
+    {% for entry in domain_url_list[domain] %}
+    <div class="ref-entry">
+      <span class="reftitle">{{ entry.ref }}</span> &nbsp;
+      <span class="reftitle">{{ entry.title if entry.title else "(no title)" }}</span>
+      <span class="ref-url">{{ entry.url }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</section>
+
+</body>
+</html>
+"""
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MAIN
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def main():
+    parser = argparse.ArgumentParser(description="Monthly Firefox history report generator")
+    parser.add_argument("year_month", help="Target month as YYYY/MM or YYYY-MM")
+    args = parser.parse_args()
+
+    sep = "/" if "/" in args.year_month else "-"
+    parts = args.year_month.split(sep)
+    if len(parts) != 2:
+        raise SystemExit("ERROR: year_month must be in format YYYY/MM or YYYY-MM")
+    try:
+        YEAR = int(parts[0])
+        MONTH = int(parts[1])
+    except ValueError:
+        raise SystemExit("ERROR: year and month must be integers")
+
+    INPUT_DIR = BASE_HISTORY_DIR / str(YEAR) / f"{MONTH:02d}"
+    OUTPUT_DIR = BASE_EXPORT_DIR / str(YEAR) / f"{MONTH:02d}"
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    base_name = f"{YEAR}-{MONTH:02d}-report"
+    if DARK_MODE:
+        base_name += "-d"
+    OUTPUT_HTML = OUTPUT_DIR / f"{base_name}.html"
+    OUTPUT_PDF = OUTPUT_DIR / f"{base_name}.pdf"
+
+    print(f"Loading history from {INPUT_DIR} …")
+    entries = load_entries(INPUT_DIR)
+    raw_queries = load_search_queries(INPUT_DIR)
+    print(f"  → {len(entries)} visits, {len(raw_queries)} search queries")
+
+    print("Processing …")
+    compute_dwell(entries)
+    sessions = build_sessions(entries)
+
+    ref_map, domain_prefix, domain_url_list, domain_top_title = build_references(entries)
+
+    data = compile_all(
+        entries, sessions, ref_map, domain_prefix, domain_url_list, domain_top_title
+    )
+
+    query_cards = build_query_cards(raw_queries, domain_prefix)
+    video_cards = build_video_cards(entries, domain_prefix)
+
+    cat_order = sorted(
+        data["categories"].keys(),
+        key=lambda c: data["categories"][c]["visits"],
+        reverse=True
+    )
+    colors = dict(CATEGORY_COLORS)
+    for c in cat_order:
+        if c not in colors:
+            colors[c] = colors.get("other", "#6b6b6b")
+
+    ctx = {
+        "year": YEAR,
+        "month": MONTH,
+        "generated_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
+        "total_visits": data["total_visits"],
+        "unique_urls": data["unique_urls"],
+        "unique_domains": data["unique_domains"],
+        "total_time": data["total_time"],
+        "first_date": data["first_date"],
+        "last_date": data["last_date"],
+        "daily": data["daily"],
+        "max_day_visits": data["max_day_visits"],
+        "days_in_month": data["days_in_month"],
+        "heatmap": data["heatmap"],
+        "categories": data["categories"],
+        "cat_order": cat_order,
+        "domain_rows": data["domain_rows"],
+        "sessions": data["sessions"],
+        "transitions": data["transitions"],
+        "query_cards": query_cards,
+        "video_cards": video_cards,
+        "colors": colors,
+        "inline_refs": INLINE_REFERENCES,
+        "domain_prefix": domain_prefix,
+        "domain_url_list": domain_url_list,
+        "domain_top_title": domain_top_title,
+        "ref_domains": list(domain_url_list.keys()),
+        "dark_mode": DARK_MODE,
+        "fmt_dur": fmt_dur,
+        "fmt_clock": fmt_clock,
+    }
+
+    print("Rendering HTML …")
+    template = Template(HTML_TEMPLATE)
+    html_body = template.render(ctx)
+
+    with open(OUTPUT_HTML, "w", encoding="utf-8") as f:
+        f.write(html_body)
+    print(f"  → {OUTPUT_HTML}")
+
+    if GENERATE_PDF:
+        if not WEASYPRINT_OK:
+            print("PDF generation skipped (WeasyPrint not installed).")
+        else:
+            print("Rendering PDF …")
+            HTML(string=html_body).write_pdf(OUTPUT_PDF)
+            print(f"  → {OUTPUT_PDF}")
+            if AUTO_OPEN_PDF:
+                import subprocess
+                subprocess.run(["xdg-open", str(OUTPUT_PDF)], check=False)
+
+    print("Done.")
+
+if __name__ == "__main__":
+    main()

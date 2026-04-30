@@ -72,10 +72,23 @@ void activity_focus(Client *c) {
     duration = ms_since(&cur.mono_start);
     f = fopen(logpath, "a");
     if (f) {
+      /* mask private browsing windows */
+      const char *title_to_write = cur.title;
+      if ((strcmp(cur.class, "firefox") == 0 ||
+           strcmp(cur.class, "Firefox") == 0 ||
+           strcmp(cur.class, "firefox-esr") == 0 ||
+           strcmp(cur.class, "Surf") == 0 ||
+           strcmp(cur.class, "tabbed") == 0) &&
+          (strstr(cur.title, "Private Browsing") ||
+           strstr(cur.title, "private browsing") ||
+           strstr(cur.title, "Incognito"))) {
+        title_to_write = "[Private Window]";
+      }
+
       fprintf(f, "%lld %lld %s %d %s \"%s\"\n",
               (long long)cur.wall_start.tv_sec, duration,
               cur.ns[0] ? cur.ns : "none", cur.tag,
-              cur.class[0] ? cur.class : "unknown", cur.title);
+              cur.class[0] ? cur.class : "unknown", title_to_write);
       fclose(f);
     }
   }

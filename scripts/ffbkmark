@@ -1,0 +1,165 @@
+#!/usr/bin/env python3
+
+import os
+import sqlite3
+import json
+import shutil
+import tempfile
+from collections import defaultdict
+
+# -----------------------------
+# CONFIG
+# -----------------------------
+DB_PATH = os.path.expanduser("~/.mozilla/firefox/ftk9yb7v.default-esr/places.sqlite")
+
+OUT_DIR = os.path.expanduser("~/.local/share/firefox/bookmarks")
+OUT_FILE = os.path.join(OUT_DIR, "bookmarks.json")
+
+
+# -----------------------------
+# SNAPSHOT (IMPORTANT FIX)
+# -----------------------------
+def make_db_snapshot(path):
+    tmp_dir = tempfile.gettempdir()
+    snap_path = os.path.join(tmp_dir, "places_snapshot.sqlite")
+
+    shutil.copy2(path, snap_path)
+
+    # Try copying WAL files if they exist (safe improvement)
+    for suffix in ["-wal", "-shm"]:
+        src = path + suffix
+        dst = snap_path + suffix
+        if os.path.exists(src):
+            try:
+                shutil.copy2(src, dst)
+            except:
+                pass
+
+    return snap_path
+
+
+# -----------------------------
+# DB CONNECT
+# -----------------------------
+def connect(db_path):
+    return sqlite3.connect(db_path)
+
+
+# -----------------------------
+# FETCH DATA
+# -----------------------------
+def fetch_bookmark_nodes(conn):
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT
+            b.id,
+            b.parent,
+            b.title,
+            b.type,
+            b.fk
+        FROM moz_bookmarks b
+        ORDER BY b.parent, b.position
+    """)
+
+    return cur.fetchall()
+
+
+def fetch_places(conn):
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT id, url
+        FROM moz_places
+    """)
+
+    return {row[0]: row[1] for row in cur.fetchall()}
+
+
+# -----------------------------
+# BUILD TREE
+# -----------------------------
+def build_tree(rows, places):
+    nodes = {}
+    children_map = defaultdict(list)
+
+    for _id, parent, title, btype, fk in rows:
+
+        url = places.get(fk)
+
+        nodes[_id] = {
+            "id": _id,
+            "parent": parent,
+            "title": title or "Untitled",
+            "url": url,
+            "children": [],
+        }
+
+        children_map[parent].append(_id)
+
+    return nodes, children_map
+
+
+def attach_children(nodes, children_map):
+    for parent, children in children_map.items():
+        if parent in nodes:
+            nodes[parent]["children"] = [nodes[c] for c in children if c in nodes]
+
+
+def get_roots(nodes):
+    return [n for n in nodes.values() if n["parent"] == 0]
+
+
+# -----------------------------
+# CLEAN OUTPUT
+# -----------------------------
+def clean(node):
+    return {
+        "id": node["id"],
+        "title": node["title"],
+        "url": node["url"],
+        "children": [clean(c) for c in node["children"]],
+    }
+
+
+# -----------------------------
+# MAIN
+# -----------------------------
+def main():
+    if not os.path.exists(DB_PATH):
+        print("❌ Firefox DB not found:")
+        print(DB_PATH)
+        return
+
+    # STEP 1: snapshot DB (fixes locking + corruption issues)
+    snapshot = make_db_snapshot(DB_PATH)
+
+    # STEP 2: read snapshot instead of live DB
+    conn = connect(snapshot)
+
+    rows = fetch_bookmark_nodes(conn)
+    places = fetch_places(conn)
+
+    nodes, tree = build_tree(rows, places)
+    attach_children(nodes, tree)
+
+    roots = get_roots(nodes)
+
+    cleaned = [clean(r) for r in roots]
+
+    if not cleaned:
+        print("⚠️ No bookmarks found. Check Firefox profile or DB integrity.")
+        return
+
+    # output
+    os.makedirs(OUT_DIR, exist_ok=True)
+
+    with open(OUT_FILE, "w", encoding="utf-8") as f:
+        json.dump(cleaned, f, indent=2, ensure_ascii=False)
+
+    print(f"[✓] Generated: {OUT_FILE}")
+    print(f"[✓] Roots: {len(cleaned)}")
+
+
+if __name__ == "__main__":
+    main()

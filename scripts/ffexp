@@ -1,0 +1,336 @@
+#!/usr/bin/env python3
+
+"""
+Firefox History → Daily JSON Exporter
+You'll have to manually run script(or just crontab)
+
+Reads Firefox `places.sqlite` and writes per-day JSON files
+Output: ~/.local/share/firefox/history/YYYY/MM/YYYY-MM-DD.json
+Change to wherever you want
+
+SETUP:
+Update FIREFOX_DB path to your Firefox profile:
+  ~/.mozilla/firefox/<profile>/places.sqlite
+
+USAGE:
+    python3 script.py
+
+# Script copies DB first (avoids Firefox lock issues)
+# Includes: visits, domains, hourly stats, search queries, frecency
+
+"""
+
+import os
+import shutil
+import sqlite3
+import json
+import hashlib
+from datetime import datetime, timezone
+from collections import defaultdict
+from urllib.parse import urlparse, parse_qs, unquote
+
+# ---------------- CONFIG ----------------
+
+FIREFOX_DB = os.path.expanduser("~/.mozilla/firefox/ftk9yb7v.default-esr/places.sqlite")
+
+WORK_DB = "/tmp/places.sqlite"
+OUTPUT_DIR = os.path.expanduser("~/.local/share/firefox/history")
+
+# ---------------- HELPERS ----------------
+
+VISIT_TYPE_MAP = {
+    1: "link",
+    2: "typed",
+    3: "bookmark",
+    4: "embed",
+    5: "redirect_perm",
+    6: "redirect_temp",
+    7: "download",
+    8: "framed_link",
+}
+
+SEARCH_ENGINES = {
+    "google": ["google."],
+    "duckduckgo": ["duckduckgo."],
+    "bing": ["bing."],
+    "youtube": ["youtube.com"],
+    "wikipedia": ["wikipedia.org"],
+}
+
+
+def micro_to_datetime(us):
+    return datetime.fromtimestamp(us / 1_000_000, tz=timezone.utc)
+
+
+def normalize_domain(url):
+    try:
+        netloc = urlparse(url).netloc.lower()
+        return netloc.replace("www.", "")
+    except:
+        return "unknown"
+
+
+def ensure_path(year, month):
+    path = os.path.join(OUTPUT_DIR, str(year), f"{month:02d}")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def file_hash(content):
+    return hashlib.md5(content.encode()).hexdigest()
+
+
+# ---------------- SEARCH EXTRACTION ----------------
+
+
+def extract_search(url):
+    try:
+        parsed = urlparse(url)
+        qs = parse_qs(parsed.query)
+        domain = parsed.netloc.lower()
+
+        for engine, patterns in SEARCH_ENGINES.items():
+            if any(p in domain for p in patterns):
+                if engine == "youtube":
+                    q = qs.get("search_query", [None])[0]
+                elif engine == "wikipedia":
+                    q = qs.get("search", [None])[0]
+                else:
+                    q = qs.get("q", [None])[0]
+
+                if q:
+                    return {"engine": engine, "domain": domain, "query": unquote(q)}
+
+    except:
+        pass
+
+    return None
+
+
+# ---------------- DB ----------------
+
+
+def copy_db():
+    if not os.path.exists(FIREFOX_DB):
+        raise FileNotFoundError("Firefox DB not found")
+    shutil.copy2(FIREFOX_DB, WORK_DB)
+
+
+def fetch_history():
+    conn = sqlite3.connect(WORK_DB)
+    cur = conn.cursor()
+
+    query = """
+    SELECT
+        v.id,
+        p.url,
+        p.title,
+        p.frecency,
+        v.visit_date,
+        v.visit_type,
+        v.from_visit
+    FROM moz_historyvisits v
+    JOIN moz_places p ON v.place_id = p.id
+    ORDER BY v.visit_date ASC;
+    """
+
+    for row in cur.execute(query):
+        visit_id, url, title, frecency, visit_date, visit_type, from_visit = row
+
+        dt = micro_to_datetime(visit_date)
+
+        yield {
+            "visit_id": visit_id,
+            "url": url,
+            "title": title or "",
+            "domain": normalize_domain(url),
+            "datetime": dt,
+            "visit_type": visit_type,
+            "visit_type_label": VISIT_TYPE_MAP.get(visit_type, "unknown"),
+            "from_visit": from_visit,
+            "frecency": frecency,
+        }
+
+    conn.close()
+
+
+# ---------------- AGGREGATION ----------------
+
+
+def group_by_day(records):
+    days = defaultdict(list)
+    for r in records:
+        key = r["datetime"].strftime("%Y-%m-%d")
+        days[key].append(r)
+    return days
+
+
+def build_day_json(date_str, entries):
+
+    summary = {
+        "total_visits": len(entries),
+        "unique_urls": len(set(e["url"] for e in entries)),
+        "unique_domains": len(set(e["domain"] for e in entries)),
+        "first_visit": entries[0]["datetime"].isoformat(),
+        "last_visit": entries[-1]["datetime"].isoformat(),
+    }
+
+    # hourly
+    hourly = {f"{i:02d}": 0 for i in range(24)}
+    for e in entries:
+        hourly[e["datetime"].strftime("%H")] += 1
+
+    # domains
+    domain_counts = defaultdict(int)
+    for e in entries:
+        domain_counts[e["domain"]] += 1
+
+    # visit type
+    visit_types = defaultdict(int)
+    for e in entries:
+        visit_types[e["visit_type_label"]] += 1
+
+    # per-url aggregation
+    url_map = {}
+
+    for e in entries:
+        url = e["url"]
+
+        if url not in url_map:
+            url_map[url] = {
+                "url": url,
+                "title": e["title"],
+                "domain": e["domain"],
+                "visit_count": 0,
+                "typed_count": 0,
+                "last_visit": e["datetime"],
+                "frecency": e["frecency"],
+                "visits": [],
+            }
+
+        url_map[url]["visit_count"] += 1
+
+        if e["visit_type"] == 2:
+            url_map[url]["typed_count"] += 1
+
+        if e["datetime"] > url_map[url]["last_visit"]:
+            url_map[url]["last_visit"] = e["datetime"]
+
+        # store raw visit linkage
+        url_map[url]["visits"].append(
+            {
+                "visit_id": e["visit_id"],
+                "from_visit": e["from_visit"],
+                "timestamp": e["datetime"].isoformat(),
+                "visit_type": e["visit_type_label"],
+            }
+        )
+
+    entries_out = []
+    for v in url_map.values():
+        entries_out.append(
+            {
+                "url": v["url"],
+                "title": v["title"],
+                "domain": v["domain"],
+                "visit_count": v["visit_count"],
+                "typed_count": v["typed_count"],
+                "last_visit": v["last_visit"].isoformat(),
+                "frecency": v["frecency"],
+                "visits": v["visits"],
+            }
+        )
+
+    # search queries aggregation
+    search_map = {}
+
+    for e in entries:
+        s = extract_search(e["url"])
+        if not s:
+            continue
+
+        key = (s["engine"], s["query"])
+
+        if key not in search_map:
+            search_map[key] = {
+                "engine": s["engine"],
+                "domain": s["domain"],
+                "query": s["query"],
+                "count": 0,
+                "last_searched": e["datetime"],
+            }
+
+        search_map[key]["count"] += 1
+
+        if e["datetime"] > search_map[key]["last_searched"]:
+            search_map[key]["last_searched"] = e["datetime"]
+
+    search_out = []
+    for v in search_map.values():
+        search_out.append(
+            {
+                "engine": v["engine"],
+                "domain": v["domain"],
+                "query": v["query"],
+                "count": v["count"],
+                "last_searched": v["last_searched"].isoformat(),
+            }
+        )
+
+    return {
+        "date": date_str,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "summary": summary,
+        "hourly_distribution": hourly,
+        "domains": dict(domain_counts),
+        "visit_type_distribution": dict(visit_types),
+        "search_queries": search_out,
+        "entries": entries_out,
+    }
+
+
+# ---------------- WRITE ----------------
+
+
+def write_day_file(date_str, data):
+    dt = datetime.strptime(date_str, "%Y-%m-%d")
+    path = ensure_path(dt.year, dt.month)
+
+    file_path = os.path.join(path, f"{date_str}.json")
+
+    new_content = json.dumps(data, indent=2)
+
+    if os.path.exists(file_path):
+        with open(file_path, "r") as f:
+            old_content = f.read()
+
+        if file_hash(old_content) == file_hash(new_content):
+            return  # skip identical
+
+    with open(file_path, "w") as f:
+        f.write(new_content)
+
+
+# ---------------- MAIN ----------------
+
+
+def main():
+    print("[*] Copying DB...")
+    copy_db()
+
+    print("[*] Fetching history...")
+    records = list(fetch_history())
+
+    print("[*] Grouping...")
+    days = group_by_day(records)
+
+    print("[*] Writing JSON...")
+    for date_str, entries in days.items():
+        data = build_day_json(date_str, entries)
+        write_day_file(date_str, data)
+
+    print("[✓] Done.")
+
+
+if __name__ == "__main__":
+    main()

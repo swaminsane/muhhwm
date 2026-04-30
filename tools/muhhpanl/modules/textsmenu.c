@@ -140,14 +140,17 @@ static void texts_input(Module *m, const InputEvent *ev) {
     char cmd[600];
     snprintf(cmd, sizeof(cmd), "%s \"%s\" &", reader, s->path);
     system(cmd);
+    panel_hide(); /* close panel after opening book */
   } else if (ev->button == Button3) {
     char cmd[256];
     snprintf(cmd, sizeof(cmd), "%s NCERT &", TEXT_SCRIPT);
     system(cmd);
+    panel_hide(); /* close panel after launching menu */
   } else if (ev->button == Button2) {
     char cmd[256];
     snprintf(cmd, sizeof(cmd), "%s Books &", TEXT_SCRIPT);
     system(cmd);
+    panel_hide(); /* close panel after launching menu */
   }
 }
 

@@ -17,39 +17,26 @@
 
 #define MAX_SOURCES 4
 #define SCRIPT_PATH "/home/swaminsane/.local/bin/mpris-ctl"
-#define BOX_GAP 4 /* vertical gap between two visible boxes */
+#define BOX_GAP 4
+#define BOX_HEIGHT 56
+#define MODULE_HEIGHT 124 /* permanent height */
 
-/* ── per‑player record ─────────────────────────── */
 typedef struct {
-  char bus[256];
-  char title[256];
-  char artist[256];
-  char player_name[64];
-  int playing; /* 1 = Playing, 0 = Paused */
-  int position_sec;
-  int duration_sec;
-  int percentage;
-
-  /* hit‑areas (content‑relative, for one box) */
-  int src_x1, src_x2, src_y1, src_y2;
-  int btn_x1, btn_x2, btn_y1, btn_y2;
-  int trk_x1, trk_x2, trk_y1, trk_y2;
+  char bus[256], title[256], artist[256], player_name[64];
+  int playing, pos_sec, dur_sec, pct;
+  int src_x1, src_x2, src_y1, src_y2; /* source name */
+  int btn_x1, btn_x2, btn_y1, btn_y2; /* play/pause */
+  int trk_x1, trk_x2, trk_y1, trk_y2; /* track bar */
+  int cls_x1, cls_x2, cls_y1, cls_y2; /* close button (×) */
 } Source;
 
-/* ── module state ──────────────────────────────── */
 typedef struct {
   Source src[MAX_SOURCES];
-  int n; /* total active sources */
-  int dragging;
-  int drag_start_x;
-  int drag_start_pct;
-  int scroll_offset;
-  int initialized; /* becomes 1 after first draw */
-  int need_relayout;
-  time_t last_poll;
+  int n, dragging, drag_x, drag_pct, scroll;
+  time_t last;
 } MprisState;
 
-/* ── helpers ───────────────────────────────────── */
+/* ── helpers (unchanged) ──────────────────────────── */
 static char *run_line(const char *cmd) {
   FILE *f = popen(cmd, "r");
   if (!f)
@@ -63,7 +50,6 @@ static char *run_line(const char *cmd) {
   pclose(f);
   return NULL;
 }
-
 static char *run_all(const char *cmd) {
   FILE *f = popen(cmd, "r");
   if (!f)
@@ -94,14 +80,12 @@ static char *run_all(const char *cmd) {
   pclose(f);
   return buf;
 }
-
 static unsigned long xpixel(const char *hex) {
   XColor c;
   XParseColor(dpy, DefaultColormap(dpy, screen), hex, &c);
   XAllocColor(dpy, DefaultColormap(dpy, screen), &c);
   return c.pixel;
 }
-
 static const char *player_color(const char *name) {
   if (!name)
     return COL_BRIGHT_BLACK;
@@ -121,8 +105,6 @@ static const char *player_color(const char *name) {
     return COL_ACCENT;
   return COL_BRIGHT_BLACK;
 }
-
-/* Parse "MM:SS/MM:SS|PP" or "H:MM:SS/H:MM:SS|PP" */
 static void parse_progress(const char *s, int *pos, int *dur, int *pct) {
   *pos = *dur = *pct = 0;
   if (!s)
@@ -141,15 +123,10 @@ static void parse_progress(const char *s, int *pos, int *dur, int *pct) {
     *pct = pp;
   }
 }
-
 static int poll_one(Source *s, const char *bus) {
-  if (strstr(bus, "plasma-browser-integration"))
+  if (strstr(bus, "plasma-browser-integration") || strstr(bus, "playerctld"))
     return 0;
-  if (strstr(bus, "playerctld"))
-    return 0;
-
   char cmd[512];
-
   snprintf(cmd, sizeof(cmd), SCRIPT_PATH " status '%s'", bus);
   char *st = run_line(cmd);
   if (!st || (strcmp(st, "Playing") && strcmp(st, "Paused"))) {
@@ -158,12 +135,10 @@ static int poll_one(Source *s, const char *bus) {
   }
   s->playing = !strcmp(st, "Playing");
   free(st);
-
   snprintf(cmd, sizeof(cmd), SCRIPT_PATH " title '%s'", bus);
   char *t = run_line(cmd);
-  strncpy(s->title, t ? t : "unknown", 255);
+  strncpy(s->title, t ?: "unknown", 255);
   free(t);
-
   snprintf(cmd, sizeof(cmd), SCRIPT_PATH " artist '%s'", bus);
   char *a = run_line(cmd);
   if (a && strcmp(a, "—") && a[0])
@@ -171,32 +146,26 @@ static int poll_one(Source *s, const char *bus) {
   else
     s->artist[0] = '\0';
   free(a);
-
   snprintf(cmd, sizeof(cmd), SCRIPT_PATH " player-name '%s'", bus);
   char *pn = run_line(cmd);
-  strncpy(s->player_name, pn ? pn : "?", 63);
+  strncpy(s->player_name, pn ?: "?", 63);
   free(pn);
-
   snprintf(cmd, sizeof(cmd), SCRIPT_PATH " progress '%s'", bus);
   char *prog = run_line(cmd);
-  parse_progress(prog, &s->position_sec, &s->duration_sec, &s->percentage);
+  parse_progress(prog, &s->pos_sec, &s->dur_sec, &s->pct);
   free(prog);
-
   strncpy(s->bus, bus, 255);
   return 1;
 }
-
 static int src_cmp(const void *a, const void *b) {
   return ((Source *)b)->playing - ((Source *)a)->playing;
 }
 
 static void poll_all(MprisState *s) {
-  int old_height = (s->n > 1) ? 116 : 56;
   s->n = 0;
   char *all = run_all(SCRIPT_PATH " list");
   if (!all)
     return;
-
   char *save = NULL;
   char *tok = strtok_r(all, "\n", &save);
   while (tok && s->n < MAX_SOURCES) {
@@ -207,22 +176,14 @@ static void poll_all(MprisState *s) {
     tok = strtok_r(NULL, "\n", &save);
   }
   free(all);
-
   qsort(s->src, s->n, sizeof(Source), src_cmp);
-
   int maxoff = s->n > 2 ? s->n - 2 : 0;
-  if (s->scroll_offset > maxoff)
-    s->scroll_offset = maxoff;
-  if (s->scroll_offset < 0)
-    s->scroll_offset = 0;
-
-  int new_height = (s->n > 1) ? 116 : 56;
-  if (s->initialized && new_height != old_height) {
-    s->need_relayout = 1;
-  }
+  if (s->scroll > maxoff)
+    s->scroll = maxoff;
+  if (s->scroll < 0)
+    s->scroll = 0;
 }
 
-/* ── module callbacks ──────────────────────────── */
 static void mpris_init(Module *m, int x, int y, int w, int h) {
   (void)x;
   (void)y;
@@ -231,72 +192,77 @@ static void mpris_init(Module *m, int x, int y, int w, int h) {
   MprisState *s = calloc(1, sizeof(*s));
   m->priv = s;
   s->dragging = -1;
-  s->initialized = 0;
-  s->need_relayout = 0;
   poll_all(s);
+}
+
+/* ── helper: format time string ──────────────────── */
+static void fmt_time(int total_sec, char *buf, size_t sz) {
+  if (total_sec >= 3600) {
+    snprintf(buf, sz, "%d:%02d:%02d", total_sec / 3600, (total_sec % 3600) / 60,
+             total_sec % 60);
+  } else {
+    snprintf(buf, sz, "%d:%02d", total_sec / 60, total_sec % 60);
+  }
 }
 
 static void mpris_draw(Module *m, int x, int y, int w, int h, int focused) {
   (void)focused;
   MprisState *s = (MprisState *)m->priv;
-  s->initialized = 1; /* safe to relayout after first draw */
+  int cx = x + m->margin_left, cy = y + m->margin_top;
 
-  int cx = x + m->margin_left;
-  int cy = y + m->margin_top;
-
-  /* overall background (the whole module area) */
   XSetForeground(dpy, drw->gc, scheme[2][ColBg].pixel);
   XFillRectangle(dpy, drw->drawable, drw->gc, x, y, w, h);
-  /* optional: a thin border around the whole module – remove if you want only
-   * box borders */
-  XSetForeground(dpy, drw->gc, scheme[0][ColBorder].pixel);
-  XDrawRectangle(dpy, drw->drawable, drw->gc, x, y, w - 1, h - 1);
-
   if (s->n == 0) {
     drw_setscheme(drw, scheme[0]);
     const char *msg = "No media";
-    int tw = drw_fontset_getwidth(drw, msg);
-    int fh = drw->fonts->h;
+    int tw = drw_fontset_getwidth(drw, msg), fh = drw->fonts->h;
     drw_text(drw, x + (w - tw) / 2, y + (h - fh) / 2, tw, fh, 0, msg, 0);
     return;
   }
 
-  int pad = MODULE_PADDING;
-  int font_h = drw->fonts->h;
-  int line_h = 24;
-  int box_h = 56;                      /* total height per box (2 lines) */
-  int visible = (s->n > 2) ? 2 : s->n; /* at most 2 boxes */
-  int start_i = s->scroll_offset;
-  int total_visible_h = box_h * visible + BOX_GAP * (visible - 1);
-
-  /* centre the visible boxes vertically inside the module */
-  int start_y = y + (h - total_visible_h) / 2;
-  if (start_y < y + pad)
-    start_y = y + pad;
-
+  int pad = MODULE_PADDING, font_h = drw->fonts->h, line_h = 24;
+  int visible = s->n > 2 ? 2 : s->n, start_i = s->scroll;
+  int box_top = cy; /* first box at content top */
   int max_tw = (w * 9) / 10;
 
   for (int i = 0; i < visible; i++) {
     Source *src = &s->src[start_i + i];
-    int box_top = start_y + i * (box_h + BOX_GAP); /* top of this box */
+    if (i > 0)
+      box_top += BOX_HEIGHT + BOX_GAP;
 
-    /* draw the box border (a card for this source) */
     XSetForeground(dpy, drw->gc, scheme[0][ColBorder].pixel);
     XDrawRectangle(dpy, drw->drawable, drw->gc, x + pad, box_top, w - 2 * pad,
-                   box_h - 1);
+                   BOX_HEIGHT - 1);
 
-    /* reset hit areas for this box */
-    src->src_x1 = src->src_x2 = 0;
+    int inner_x = x + pad + 2, inner_w = w - 2 * pad - 4;
     src->btn_x1 = src->btn_x2 = 0;
     src->trk_x1 = src->trk_x2 = 0;
-    src->trk_y1 = src->trk_y2 = 0;
+    src->cls_x1 = src->cls_x2 = 0;
 
-    /* inner drawing coordinates (leave space for border) */
-    int inner_x = x + pad + 2;
-    int inner_w = w - 2 * pad - 4;
+    /* ── tiny close button (top‑right corner) ── */
+    int cls_sz = 8;                       /* 8×8 square */
+    int cls_x = x + w - pad - cls_sz - 2; /* 2px from right border */
+    int cls_y = box_top + 2;              /* 2px from top of box */
 
-    /* ── line 1: title – artist   player name ── */
-    int line1_y = box_top + 2;
+    unsigned long red = xpixel(COL_RED);
+    XSetForeground(dpy, drw->gc, red);
+    XFillRectangle(dpy, drw->drawable, drw->gc, cls_x, cls_y, cls_sz, cls_sz);
+
+    /* white X */
+    XSetForeground(dpy, drw->gc, WhitePixel(dpy, screen));
+    XDrawLine(dpy, drw->drawable, drw->gc, cls_x + 2, cls_y + 2,
+              cls_x + cls_sz - 2, cls_y + cls_sz - 2);
+    XDrawLine(dpy, drw->drawable, drw->gc, cls_x + 2, cls_y + cls_sz - 2,
+              cls_x + cls_sz - 2, cls_y + 2);
+
+    src->cls_x1 = cls_x - cx;
+    src->cls_x2 = cls_x + cls_sz - cx;
+    src->cls_y1 = cls_y - cy;
+    src->cls_y2 = cls_y + cls_sz - cy;
+
+    /* ── line 1: title – artist   player name   (must leave space for the close
+     * button) ── */
+    int l1y = box_top + 2;
     char line1[512];
     if (src->artist[0])
       snprintf(line1, sizeof(line1), "%s – %s", src->title, src->artist);
@@ -305,14 +271,18 @@ static void mpris_draw(Module *m, int x, int y, int w, int h, int focused) {
     int tw1 = drw_fontset_getwidth(drw, line1);
     const char *sname = src->player_name;
     int snw = drw_fontset_getwidth(drw, sname);
+
     int gap = 8;
-    int avail = max_tw - snw - gap;
+    /* width available for title + source name, keeping a gap before the close
+     * button */
+    int avail = max_tw - snw - gap - (cls_sz + 4); /* 4px safety margin */
     if (tw1 > avail)
       tw1 = avail;
 
     drw_setscheme(drw, scheme[0]);
-    drw_text(drw, inner_x, line1_y, tw1, line_h, 0, line1, 0);
+    drw_text(drw, inner_x, l1y, tw1, line_h, 0, line1, 0);
 
+    /* source name in colour */
     const char *pcol = player_color(sname);
     XftColor sc;
     {
@@ -324,7 +294,7 @@ static void mpris_draw(Module *m, int x, int y, int w, int h, int focused) {
                          DefaultColormap(dpy, screen), &xrc, &sc);
     }
     int snx = inner_x + tw1 + gap;
-    int sny = line1_y + (line_h - font_h) / 2 + drw->fonts->xfont->ascent;
+    int sny = l1y + (line_h - font_h) / 2 + drw->fonts->xfont->ascent;
     XftDraw *xd = XftDrawCreate(dpy, drw->drawable, DefaultVisual(dpy, screen),
                                 DefaultColormap(dpy, screen));
     XftDrawStringUtf8(xd, &sc, drw->fonts->xfont, snx, sny,
@@ -332,20 +302,15 @@ static void mpris_draw(Module *m, int x, int y, int w, int h, int focused) {
     XftDrawDestroy(xd);
     XftColorFree(dpy, DefaultVisual(dpy, screen), DefaultColormap(dpy, screen),
                  &sc);
-
     src->src_x1 = snx - cx;
     src->src_x2 = snx + snw - cx;
-    src->src_y1 = box_top + 2 - cy;
-    src->src_y2 = box_top + 2 + line_h - cy;
+    src->src_y1 = l1y - cy;
+    src->src_y2 = l1y + line_h - cy;
 
     /* ── line 2: play/pause button, time, progress bar ── */
-    int bar_y = box_top + 2 + line_h; /* top of second line */
-    int bar_pad = 8, bar_h = 10, knob = 10;
-    int bar_center_y = bar_y + line_h / 2 - bar_h / 2;
-
-    int btn_sz = line_h - 4;
-    int bnx = inner_x + bar_pad;
-    int bny = bar_y + (line_h - btn_sz) / 2;
+    int bar_y = box_top + 2 + line_h, bar_pad = 8, bar_h = 10, knob = 10;
+    int bar_cy = bar_y + line_h / 2 - bar_h / 2, btn_sz = line_h - 4;
+    int bnx = inner_x + bar_pad, bny = bar_y + (line_h - btn_sz) / 2;
     unsigned long accent = xpixel(COL_ACCENT);
     XSetForeground(dpy, drw->gc, accent);
     XFillRectangle(dpy, drw->drawable, drw->gc, bnx, bny, btn_sz, btn_sz);
@@ -378,13 +343,11 @@ static void mpris_draw(Module *m, int x, int y, int w, int h, int focused) {
     src->btn_y1 = bny - cy;
     src->btn_y2 = bny + btn_sz - cy;
 
-    /* time strings */
+    /* time strings – use H:MM:SS when needed */
     int ts = bnx + btn_sz + 4;
     char tcur[16], ttot[16];
-    snprintf(tcur, sizeof(tcur), "%d:%02d", src->position_sec / 60,
-             src->position_sec % 60);
-    snprintf(ttot, sizeof(ttot), "%d:%02d", src->duration_sec / 60,
-             src->duration_sec % 60);
+    fmt_time(src->pos_sec, tcur, sizeof(tcur));
+    fmt_time(src->dur_sec, ttot, sizeof(ttot));
     int tw_cur = drw_fontset_getwidth(drw, tcur);
     drw_setscheme(drw, scheme[0]);
     drw_text(drw, ts, bar_y, tw_cur, line_h, 0, tcur, 0);
@@ -398,7 +361,7 @@ static void mpris_draw(Module *m, int x, int y, int w, int h, int focused) {
     int trk_len = trk_end - ts;
     if (trk_len < 16)
       trk_len = 16;
-    float frac = src->percentage / 100.0f;
+    float frac = src->pct / 100.0f;
     int kx = ts + (int)(frac * trk_len) - knob / 2;
     if (kx < ts)
       kx = ts;
@@ -406,10 +369,9 @@ static void mpris_draw(Module *m, int x, int y, int w, int h, int focused) {
       kx = trk_end - knob;
 
     XSetForeground(dpy, drw->gc, xpixel(COL_GREEN));
-    XFillRectangle(dpy, drw->drawable, drw->gc, ts, bar_center_y, kx - ts,
-                   bar_h);
+    XFillRectangle(dpy, drw->drawable, drw->gc, ts, bar_cy, kx - ts, bar_h);
     XSetForeground(dpy, drw->gc, 0x3b4252);
-    XFillRectangle(dpy, drw->drawable, drw->gc, kx + knob, bar_center_y,
+    XFillRectangle(dpy, drw->drawable, drw->gc, kx + knob, bar_cy,
                    trk_end - (kx + knob), bar_h);
 
     int ky = bar_y + (line_h - knob) / 2;
@@ -423,34 +385,38 @@ static void mpris_draw(Module *m, int x, int y, int w, int h, int focused) {
   }
 }
 
-/* ── input handler ───────────────────────────────── */
 static void mpris_input(Module *m, const InputEvent *ev) {
   MprisState *s = (MprisState *)m->priv;
-
-  /* scroll – works anywhere in the module */
   if (ev->type == EV_SCROLL) {
     int maxoff = s->n > 2 ? s->n - 2 : 0;
-    int new_off = s->scroll_offset + ev->scroll_dy;
+    int new_off = s->scroll + ev->scroll_dy;
     if (new_off < 0)
       new_off = 0;
     if (new_off > maxoff)
       new_off = maxoff;
-    if (new_off != s->scroll_offset) {
-      s->scroll_offset = new_off;
+    if (new_off != s->scroll) {
+      s->scroll = new_off;
       panel_redraw();
     }
     return;
   }
-
   if (s->n == 0)
     return;
-
   if (ev->type == EV_PRESS && ev->button == Button1) {
-    int start_i = s->scroll_offset;
-    int visible = s->n > 2 ? 2 : s->n;
-
-    for (int i = 0; i < visible; i++) {
+    int start_i = s->scroll, vis = s->n > 2 ? 2 : s->n;
+    for (int i = 0; i < vis; i++) {
       Source *src = &s->src[start_i + i];
+
+      /* close button (×) */
+      if (ev->x >= src->cls_x1 && ev->x < src->cls_x2 && ev->y >= src->cls_y1 &&
+          ev->y < src->cls_y2) {
+        char cmd[512];
+        snprintf(cmd, sizeof(cmd), SCRIPT_PATH " quit '%s'", src->bus);
+        system(cmd);
+        poll_all(s);
+        panel_redraw();
+        return;
+      }
 
       if (ev->x >= src->btn_x1 && ev->x < src->btn_x2 && ev->y >= src->btn_y1 &&
           ev->y < src->btn_y2) {
@@ -461,15 +427,13 @@ static void mpris_input(Module *m, const InputEvent *ev) {
         panel_redraw();
         return;
       }
-
       if (ev->x >= src->trk_x1 && ev->x <= src->trk_x2 &&
           ev->y >= src->trk_y1 && ev->y < src->trk_y2) {
         s->dragging = start_i + i;
-        s->drag_start_x = ev->x;
-        s->drag_start_pct = src->percentage;
+        s->drag_x = ev->x;
+        s->drag_pct = src->pct;
         return;
       }
-
       if (ev->x >= src->src_x1 && ev->x < src->src_x2 && ev->y >= src->src_y1 &&
           ev->y < src->src_y2) {
         if (strcmp(src->player_name, "firefox") == 0)
@@ -479,39 +443,35 @@ static void mpris_input(Module *m, const InputEvent *ev) {
         return;
       }
     }
+    return;
   }
-
   if (ev->type == EV_MOTION && s->dragging >= 0) {
     Source *src = &s->src[s->dragging];
     int len = src->trk_x2 - src->trk_x1;
     if (len < 1)
       len = 1;
-
-    int clamped_x = ev->x;
-    if (clamped_x < src->trk_x1)
-      clamped_x = src->trk_x1;
-    if (clamped_x > src->trk_x2)
-      clamped_x = src->trk_x2;
-
-    int new_pct = (clamped_x - src->trk_x1) * 100 / len;
+    int cx = ev->x;
+    if (cx < src->trk_x1)
+      cx = src->trk_x1;
+    if (cx > src->trk_x2)
+      cx = src->trk_x2;
+    int new_pct = (cx - src->trk_x1) * 100 / len;
     if (new_pct < 0)
       new_pct = 0;
     if (new_pct > 100)
       new_pct = 100;
-
-    int diff = new_pct - s->drag_start_pct;
+    int diff = new_pct - s->drag_pct;
     if (diff) {
       char cmd[512];
       snprintf(cmd, sizeof(cmd), SCRIPT_PATH " seek '%s' %+d%%", src->bus,
                diff);
       system(cmd);
-      s->drag_start_pct = new_pct;
-      src->percentage = new_pct;
+      s->drag_pct = new_pct;
+      src->pct = new_pct;
       panel_redraw();
     }
     return;
   }
-
   if (ev->type == EV_RELEASE && ev->button == Button1 && s->dragging >= 0) {
     s->dragging = -1;
     poll_all(s);
@@ -519,33 +479,22 @@ static void mpris_input(Module *m, const InputEvent *ev) {
   }
 }
 
-/* ── timer (2 sec) ───────────────────────────────── */
 static void mpris_timer(Module *m) {
   MprisState *s = (MprisState *)m->priv;
   time_t now = time(NULL);
-  if (now - s->last_poll >= 2) {
-    s->last_poll = now;
+  if (now - s->last >= 2) {
+    s->last = now;
     if (s->dragging < 0)
       poll_all(s);
-    if (s->need_relayout) {
-      s->need_relayout = 0;
-      panel_relayout();
-      panel_redraw();
-    }
     panel_redraw();
   }
 }
 
 static void mpris_destroy(Module *m) { free(m->priv); }
 
-/* ── hints: 56 for 0/1 source, 116 for 2+ ────────── */
 static LayoutHints *mpris_hints(Module *m) {
-  static LayoutHints hints;
-  MprisState *s = (MprisState *)m->priv;
-  int height = (s && s->n > 1) ? 116 : 56;
-  hints.min_h = hints.pref_h = hints.max_h = height;
-  hints.expand_y = 0;
-  hints.expand_x = 1;
+  static LayoutHints hints = {124, 124, 124, 124, 0, 0, 1.0, 1.0};
+  (void)m;
   return &hints;
 }
 

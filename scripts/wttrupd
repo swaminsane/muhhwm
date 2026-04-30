@@ -1,0 +1,30 @@
+#!/bin/bash
+# weather-update – fetch plain‑text weather and store a clean version
+
+CITIES=(
+    Nawada
+    Patna
+    # "New York"
+    # Tokyo
+)
+
+CACHE_DIR="$HOME/.cache/muhhwm/wttr"
+mkdir -p "$CACHE_DIR"
+
+for CITY in "${CITIES[@]}"; do
+    echo "Updating $CITY ..."
+
+    curl -s "wttr.in/${CITY}?0" 2>/dev/null |
+    awk '
+        NR==1 { sub(/^Weather report: /,""); city=$0; next }
+        NR==2 { condition=$0;
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", condition);
+                printf "%s: %s\n", city, condition;
+                next }
+        {
+            # Strip ANSI escape sequences
+            gsub(/\033\[[0-9;]*[a-zA-Z]/, "")
+            print
+        }
+    ' > "$CACHE_DIR/$CITY"
+done

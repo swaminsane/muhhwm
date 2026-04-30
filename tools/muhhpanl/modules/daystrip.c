@@ -31,51 +31,43 @@ typedef struct {
   struct timespec trans_start;
 } DaystripState;
 
-/* ── construct today's activity log path ─────────────── */
-static void log_path(char *buf, size_t sz) {
-  time_t now = time(NULL);
-  struct tm *tm = localtime(&now);
-  const char *home = getenv("HOME");
-  snprintf(buf, sz, "%s/.local/share/muhhwm/activity/%04d-%02d-%02d.log",
-           home ? home : "/tmp", tm->tm_year + 1900, tm->tm_mon + 1,
-           tm->tm_mday);
-}
-
-/* ── parse the activity file and fill state ───────────── */
-static void load_daydata(DaystripState *s) {
-  char path[512];
-  log_path(path, sizeof(path));
-
+/* ── run `muhhtime rawtoday` and parse its output ───────── */
+static void load_muhhtime(DaystripState *s) {
   s->total_ms = 0;
   for (int i = 0; i < N_NS; i++)
     s->ns_ms[i] = 0;
 
-  FILE *f = fopen(path, "r");
+  FILE *f = popen("muhhtime rawtoday 2>/dev/null", "r");
   if (!f)
     return;
 
-  char line[512];
+  char line[256];
   while (fgets(line, sizeof(line), f)) {
-    long long ts, dur;
-    char ns[32], cls[64], title[256];
-    int tag;
-    if (sscanf(line, "%lld %lld %31s %d %63s \"%255[^\"]\"", &ts, &dur, ns,
-               &tag, cls, title) < 5)
+    /* handle "total active <minutes>" */
+    if (strncmp(line, "total active ", 13) == 0) {
+      long long min_val = 0;
+      if (sscanf(line + 13, "%lld", &min_val) == 1)
+        s->total_ms = min_val * 60000;
       continue;
-    if (dur <= 0)
-      continue;
-
-    s->total_ms += dur;
-    for (int i = 0; i < N_NS; i++) {
-      if (strcmp(ns, ns_names[i]) == 0) {
-        s->ns_ms[i] += dur;
-        break;
-      }
     }
-  }
-  fclose(f);
-}
 
+    /* handle "study <min>", "code <min>", "free <min>" */
+    char key[64];
+    long long val_min;
+    if (sscanf(line, "%63s %lld", key, &val_min) != 2)
+      continue;
+
+    if (strcmp(key, "study") == 0) {
+      s->ns_ms[0] = val_min * 60000;
+    } else if (strcmp(key, "code") == 0) {
+      s->ns_ms[1] = val_min * 60000;
+    } else if (strcmp(key, "free") == 0) {
+      s->ns_ms[2] = val_min * 60000;
+    }
+    /* hour lines are ignored */
+  }
+  pclose(f);
+}
 /* ── format milliseconds to short string ───── */
 static void fmt_time(long long ms, char *buf, size_t sz) {
   int secs = (int)(ms / 1000);
@@ -114,7 +106,7 @@ static void daystrip_init(Module *m, int x, int y, int w, int h) {
   m->h = h;
   DaystripState *s = calloc(1, sizeof(DaystripState));
   m->priv = s;
-  load_daydata(s);
+  load_muhhtime(s);
   s->last_check = time(NULL);
   s->show_line = 0;
   start_blink(s);
@@ -235,7 +227,7 @@ static void daystrip_timer(Module *m) {
   /* update data every 30s */
   time_t now = time(NULL);
   if (now - s->last_check >= 30) {
-    load_daydata(s);
+    load_muhhtime(s);
     s->last_check = now;
     panel_redraw();
   }

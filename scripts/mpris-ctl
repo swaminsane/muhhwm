@@ -1,0 +1,289 @@
+#!/usr/bin/env bash
+# mpris-ctl – reliable MPRIS v2 controller (busctl)
+set -euo pipefail
+
+die() { echo "ERROR: $*" >&2; exit 1; }
+
+# ----------------------------------------------------------------------
+#  helpers
+# ----------------------------------------------------------------------
+_list_buses() {
+    busctl --user list --no-legend 2>/dev/null \
+        | awk '/org\.mpris\.MediaPlayer2/ {print $1}'
+}
+
+_first_player() {
+    local p=$(_list_buses | head -1)
+    [[ -z "$p" ]] && die "No MPRIS player found."
+    echo "$p"
+}
+
+# ---------- title EXACTLY as you finalized ----------
+_title() {
+    local bus="$1"
+    if command -v jq &>/dev/null; then
+        busctl --user get-property --json=short "$bus" \
+            /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player Metadata 2>/dev/null \
+            | jq -r '.data["xesam:title"].data'
+    else
+        busctl --user get-property "$bus" \
+            /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player Metadata 2>/dev/null \
+            | sed "s/\\\\'/'/g" \
+            | awk -F'"' '/xesam:title/{for(i=2;i<NF;i++){if($i~"xesam:title"){print $(i+2); exit}}}'
+    fi
+}
+
+# --------- artist name ------------------------------
+_artist() {
+    local bus="$1"
+    if command -v jq &>/dev/null; then
+        busctl --user get-property --json=short "$bus" \
+            /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player Metadata 2>/dev/null \
+            | jq -r '.data["xesam:artist"].data | if type=="array" then join(", ") else . end'
+    else
+        busctl --user get-property "$bus" \
+            /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player Metadata 2>/dev/null \
+            | sed "s/\\\\'/'/g" \
+            | awk -F'"' '
+            {
+                for (i=1; i<=NF; i++) {
+                    f = $i; gsub(/^[[:space:]]+|[[:space:]]+$/, "", f)
+                    if (f == "xesam:artist") {
+                        ft = $(i+1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", ft)
+                        if (ft ~ /^s/) {
+                            val = $(i+2); gsub(/^[[:space:]]+|[[:space:]]+$/, "", val)
+                            print val
+                            exit
+                        } else if (ft ~ /^as/) {
+                            split(ft, arr, " ")
+                            n = arr[2] + 0
+                            for (j = 1; j <= n; j++) {
+                                val = $(i+2+j); gsub(/^[[:space:]]+|[[:space:]]+$/, "", val)
+                                if (j > 1) printf ", "
+                                printf "%s", val
+                            }
+                            printf "\n"
+                            exit
+                        }
+                    }
+                }
+            }'
+    fi
+}
+
+_len_us() {
+    busctl --user get-property "$1" /org/mpris/MediaPlayer2 \
+        org.mpris.MediaPlayer2.Player Metadata 2>/dev/null \
+        | sed "s/\\\\'/'/g" \
+        | awk '/"mpris:length"/{for(i=1;i<=NF;i++) if($i=="\"mpris:length\"") {print $(i+2)+0; exit}}'
+}
+
+_pos_us() {
+    busctl --user get-property "$1" /org/mpris/MediaPlayer2 \
+        org.mpris.MediaPlayer2.Player Position 2>/dev/null \
+        | awk '{for(i=1;i<=NF;i++) if($i ~ /^-?[0-9]+$/) v=$i} END{print v+0}'
+}
+
+_volume_get() {
+    busctl --user get-property "$1" /org/mpris/MediaPlayer2 \
+        org.mpris.MediaPlayer2.Player Volume 2>/dev/null \
+        | awk '{print $NF}'
+}
+
+_status() {
+    busctl --user get-property "$1" /org/mpris/MediaPlayer2 \
+        org.mpris.MediaPlayer2.Player PlaybackStatus 2>/dev/null \
+        | awk '{gsub(/"/,"",$2); print $2}'
+}
+
+_player_name() {
+    local name="$1"
+    name="${name#org.mpris.MediaPlayer2.}"
+    name="${name%%.instance*}"
+    name="${name//./ }"
+    echo "$name" | awk '{print toupper(substr($1,1,1)) substr($1,2)}'
+}
+
+_format_time() {
+    local us=$1
+    local s=$((us / 1000000))
+    local m=$((s / 60))
+    s=$((s % 60))
+    printf "%d:%02d" $m $s
+}
+
+_parse_offset() {
+    local val="$1"
+    if [[ "$val" == *% ]]; then
+        echo "percent:${val%\%}"
+        return
+    fi
+    local sign=1
+    [[ "$val" =~ ^[+-] ]] && { [[ "$val" =~ ^- ]] && sign=-1; val="${val:1}"; }
+    if [[ "$val" =~ ^[0-9]+$ ]]; then
+        echo "$((sign * val))"
+        return
+    fi
+    local total=0
+    while [[ "$val" =~ ^([0-9]+)(h|m|s) ]]; do
+        local num=${BASH_REMATCH[1]} unit=${BASH_REMATCH[2]}
+        case $unit in
+            h) num=$((num * 3600 * 1000000)) ;;
+            m) num=$((num * 60 * 1000000)) ;;
+            s) num=$((num * 1000000)) ;;
+        esac
+        total=$((total + num))
+        val=${val#${BASH_REMATCH[0]}}
+    done
+    echo "$((sign * total))"
+}
+
+# ----------------------------------------------------------------------
+#  command resolvers
+# ----------------------------------------------------------------------
+_resolve_bus() {
+    if [[ "${1:-}" =~ ^org\.mpris\.MediaPlayer2\. ]]; then
+        echo "$1"
+    else
+        _first_player
+    fi
+}
+
+# ----------------------------------------------------------------------
+#  public commands
+# ----------------------------------------------------------------------
+cmd_list()           { _list_buses; }
+cmd_title()          { _title "$(_resolve_bus "${1:-}")"; }
+cmd_artist()         { _artist "$(_resolve_bus "${1:-}")"; }
+cmd_status()         { _status "$(_resolve_bus "${1:-}")"; }
+cmd_player_name()    { _player_name "$(_resolve_bus "${1:-}")"; }
+
+cmd_volume() {
+    local bus=$(_resolve_bus "${1:-}")
+    if [[ $# -gt 1 ]]; then
+        shift
+        local v="$1"
+        [[ "$v" == *% ]] && v="$(awk "BEGIN{printf \"%.2f\", ${v%\%}/100}")"
+        busctl --user set-property "$bus" /org/mpris/MediaPlayer2 \
+            org.mpris.MediaPlayer2.Player Volume d "$v"
+    else
+        _volume_get "$bus"
+    fi
+}
+
+cmd_play_pause() {
+    local bus=$(_resolve_bus "${1:-}")
+    busctl --user call "$bus" /org/mpris/MediaPlayer2 \
+        org.mpris.MediaPlayer2.Player PlayPause
+}
+
+cmd_quit() {
+    local bus=$(_resolve_bus "${1:-}")
+
+    # If this is a Firefox instance, just stop playback (killing the whole browser is evil)
+    if [[ "$bus" == *firefox* ]]; then
+        busctl --user call "$bus" /org/mpris/MediaPlayer2 \
+            org.mpris.MediaPlayer2.Player Stop
+        return
+    fi
+
+    # 1. Try the optional MPRIS Quit command (mpv, VLC, etc.)
+    busctl --user call "$bus" /org/mpris/MediaPlayer2 \
+        org.mpris.MediaPlayer2 Quit 2>/dev/null && return
+
+    # 2. Fallback: find the process PID via D‑Bus
+    local pid
+    pid=$(busctl --user call org.freedesktop.DBus /org/freedesktop/DBus \
+          org.freedesktop.DBus GetConnectionUnixProcessID \
+          s "$bus" 2>/dev/null | awk '{print $2}')
+
+    if [[ -n "$pid" && "$pid" =~ ^[0-9]+$ ]]; then
+        kill "$pid" 2>/dev/null && return
+    fi
+
+    die "Could not quit player '$bus'."
+}
+
+cmd_progress() {
+    local bus=$(_resolve_bus "${1:-}")
+    local pos=$(_pos_us "$bus")
+    local len=$(_len_us "$bus")
+    len=${len:-0}
+    local pct=0
+    [[ $len -gt 0 ]] && pct=$((pos * 100 / len))
+    echo "$(_format_time "$pos")/$(_format_time "$len")|${pct}"
+}
+
+cmd_seek() {
+    local bus="$1" offset_str="$2"
+    [[ -z "$bus" || -z "$offset_str" ]] && die "Usage: mpris-ctl seek <bus> <offset>"
+    if ! [[ "$bus" =~ ^org\.mpris\.MediaPlayer2\. ]]; then
+        die "Invalid bus name: $bus"
+    fi
+
+    local len offset_us
+    if [[ "$offset_str" == *% ]]; then
+        len=$(_len_us "$bus")
+        [[ -z "$len" || $len -le 0 ]] && die "Cannot seek by % – unknown track length."
+        local pct="${offset_str%\%}"
+        offset_us=$(awk "BEGIN{printf \"%d\", ($pct/100)*$len}")
+    else
+        offset_us=$(_parse_offset "$offset_str")
+        [[ "$offset_us" == percent:* ]] && die "Cannot seek by % – unknown track length."
+    fi
+
+    if [ "$offset_us" -lt 0 ]; then
+        busctl --user call "$bus" /org/mpris/MediaPlayer2 \
+            org.mpris.MediaPlayer2.Player Seek x -- "$offset_us"
+    else
+        busctl --user call "$bus" /org/mpris/MediaPlayer2 \
+            org.mpris.MediaPlayer2.Player Seek x "$offset_us"
+    fi
+}
+
+cmd_help() {
+    cat <<'EOF'
+mpris-ctl – direct MPRIS v2 control (no playerctl)
+
+Usage:
+  mpris-ctl list
+  mpris-ctl title [<bus>]
+  mpris-ctl artist [<bus>]
+  mpris-ctl status [<bus>]
+  mpris-ctl player-name [<bus>]
+  mpris-ctl volume [<bus>] [value]
+  mpris-ctl play-pause [<bus>]
+  mpris-ctl quit [<bus>]
+  mpris-ctl progress [<bus>]
+  mpris-ctl seek <bus> <offset>
+  mpris-ctl help
+
+Offset formats: +10s, -2m30s, 1h, 5000000 (µs), +3%, -5%
+
+If <bus> is omitted, the first available player is used (except seek).
+EOF
+}
+
+# ----------------------------------------------------------------------
+#  main
+# ----------------------------------------------------------------------
+main() {
+    local cmd="${1:-help}"
+    shift || true
+    case "$cmd" in
+        list)         cmd_list "$@" ;;
+        title)        cmd_title "$@" ;;
+        artist)       cmd_artist "$@" ;;
+        status)       cmd_status "$@" ;;
+        player-name)  cmd_player_name "$@" ;;
+        volume)       cmd_volume "$@" ;;
+        play-pause)   cmd_play_pause "$@" ;;
+        quit)         cmd_quit "$@" ;;
+        progress)     cmd_progress "$@" ;;
+        seek)         cmd_seek "$@" ;;
+        help|-h|--help) cmd_help ;;
+        *)            die "Unknown command '$cmd'. Run 'mpris-ctl help'." ;;
+    esac
+}
+
+main "$@"

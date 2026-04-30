@@ -127,6 +127,7 @@ struct Client {
   int ns;            /* owning namespace index       */
   int isfixed, isfloating, isurgent;
   int isfullscreen, neverfocus, oldstate;
+  int iswallpaper; /* true → treat as desktop background */
   Window win;
   Client *next;
   Client *snext;
