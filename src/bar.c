@@ -22,6 +22,13 @@ static int wk_active = 0;
 static WhichKey *wk_cur = NULL;
 static int wk_ncur = 0;
 
+#define WK_STACK_MAX 32
+static struct {
+  WhichKey *cur;
+  int ncur;
+} wk_stack[WK_STACK_MAX];
+static int wk_sp = 0; /* next free slot */
+
 static void wk_grab_all(void) {
   XUngrabKey(wm.dpy, AnyKey, AnyModifier, wm.root);
   XGrabKey(wm.dpy, AnyKey, AnyModifier, wm.root, True, GrabModeAsync,
@@ -38,6 +45,7 @@ void bar_whichkey_activate(void) {
   wk_cur = wk_root;
   wk_ncur = (int)(sizeof(wk_root) / sizeof(wk_root[0]));
   wk_grab_all();
+  wk_sp = 0;
   for (Monitor *m = wm.mons; m; m = m->next)
     bar_draw(m);
 }
@@ -48,25 +56,47 @@ static void wk_close(void) {
   wk_active = 0;
   wk_cur = NULL;
   wk_ncur = 0;
+  wk_sp = 0;
   wk_ungrab_all();
   for (Monitor *m = wm.mons; m; m = m->next)
     bar_draw(m);
 }
 
 void bar_whichkey_key(KeySym ks) {
+  /* ── Escape — close completely ── */
   if (ks == XK_Escape) {
     wk_close();
     return;
   }
 
+  /* ── Backspace — go back one level (if not at root) ── */
+  if (ks == XK_BackSpace) {
+    if (wk_sp > 0) {
+      wk_sp--;
+      wk_cur = wk_stack[wk_sp].cur;
+      wk_ncur = wk_stack[wk_sp].ncur;
+      for (Monitor *m = wm.mons; m; m = m->next)
+        bar_draw(m);
+    }
+    return;
+  }
+
+  /* ── Match key against current menu ── */
   for (int i = 0; i < wk_ncur; i++) {
     if (wk_cur[i].key == ks) {
       if (wk_cur[i].cmd) {
+        /* leaf — execute command and close */
         const char *cmd[] = {"/bin/sh", "-c", wk_cur[i].cmd, NULL};
         Arg a = {.v = cmd};
         spawn(&a);
         wk_close();
       } else {
+        /* submenu — push current level, then descend */
+        if (wk_sp < WK_STACK_MAX) {
+          wk_stack[wk_sp].cur = wk_cur;
+          wk_stack[wk_sp].ncur = wk_ncur;
+          wk_sp++;
+        }
         WhichKey *next = wk_cur[i].children;
         int nnext = wk_cur[i].nchildren;
         wk_cur = next;
