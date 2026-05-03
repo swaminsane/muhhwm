@@ -1,15 +1,4 @@
-
-/* whichbinds.h - muhhwm which-key command tree
- *
- * To add a new leaf (direct action):
- *   WK_LEAF('x', "label", "shell command")
- *
- * To add a new prefix (opens submenu):
- *   1. Define a new array: static WhichKey wk_mygroup[] = { ... };
- *   2. Add WK_PREFIX('x', "label+", wk_mygroup) to the parent array
- *
- * Labels for prefixes should end with + to signal they go deeper.
- * Commands are passed to /bin/sh -c so full shell syntax works.
+/* whichbinds.h – muhhwm which‑key command tree (original engine, no action/arg)
  */
 
 #ifndef WHICHBINDS_H
@@ -17,8 +6,7 @@
 #include <X11/XF86keysym.h>
 #include <X11/keysym.h>
 
-/* ── data structure ──────────────────────────────────────────────────────── */
-
+/* ── data structure (unchanged) ─────────────────────────────────────────── */
 typedef struct WhichKey WhichKey;
 
 struct WhichKey {
@@ -43,6 +31,77 @@ struct WhichKey {
    .children = (submenu),                                                      \
    .nchildren = (int)(sizeof(submenu) / sizeof(submenu[0]))}
 
+/* ── workspace via xdotool (with small delay) ──────────────────────────── */
+static WhichKey wk_workspace_ns1[] = {
+    WK_LEAF('1', "β",
+            "sh -c 'xdotool key --clearmodifiers Super_L+F1; sleep 0.1; "
+            "xdotool key --clearmodifiers Super_L+1'"),
+    WK_LEAF('2', "β",
+            "sh -c 'xdotool key --clearmodifiers Super_L+F1; sleep 0.1; "
+            "xdotool key --clearmodifiers Super_L+2'"),
+    WK_LEAF('3', "γ",
+            "sh -c 'xdotool key --clearmodifiers Super_L+F1; sleep 0.1; "
+            "xdotool key --clearmodifiers Super_L+3'"),
+    WK_LEAF('4', "δ",
+            "sh -c 'xdotool key --clearmodifiers Super_L+F1; sleep 0.1; "
+            "xdotool key --clearmodifiers Super_L+4'"),
+    WK_LEAF('5', "ε",
+            "sh -c 'xdotool key --clearmodifiers Super_L+F1; sleep 0.1; "
+            "xdotool key --clearmodifiers Super_L+5'"),
+    WK_LEAF('6', "ζ",
+            "sh -c 'xdotool key --clearmodifiers Super_L+F1; sleep 0.1; "
+            "xdotool key --clearmodifiers Super_L+6'"),
+};
+
+static WhichKey wk_workspace_ns2[] = {
+    WK_LEAF('1', "α",
+            "sh -c 'xdotool key --clearmodifiers Super_L+F2; sleep 0.1; "
+            "xdotool key --clearmodifiers Super_L+1'"),
+    WK_LEAF('2', "β",
+            "sh -c 'xdotool key --clearmodifiers Super_L+F2; sleep 0.1; "
+            "xdotool key --clearmodifiers Super_L+2'"),
+    WK_LEAF('3', "γ",
+            "sh -c 'xdotool key --clearmodifiers Super_L+F2; sleep 0.1; "
+            "xdotool key --clearmodifiers Super_L+3'"),
+    WK_LEAF('4', "δ",
+            "sh -c 'xdotool key --clearmodifiers Super_L+F2; sleep 0.1; "
+            "xdotool key --clearmodifiers Super_L+4'"),
+    WK_LEAF('5', "ε",
+            "sh -c 'xdotool key --clearmodifiers Super_L+F2; sleep 0.1; "
+            "xdotool key --clearmodifiers Super_L+5'"),
+    WK_LEAF('6', "ζ",
+            "sh -c 'xdotool key --clearmodifiers Super_L+F2; sleep 0.1; "
+            "xdotool key --clearmodifiers Super_L+6'"),
+};
+
+static WhichKey wk_workspace_ns3[] = {
+    WK_LEAF('1', "α",
+            "sh -c 'xdotool key --clearmodifiers Super_L+F3; sleep 0.1; "
+            "xdotool key --clearmodifiers Super_L+1'"),
+    WK_LEAF('2', "β",
+            "sh -c 'xdotool key --clearmodifiers Super_L+F3; sleep 0.1; "
+            "xdotool key --clearmodifiers Super_L+2'"),
+    WK_LEAF('3', "γ",
+            "sh -c 'xdotool key --clearmodifiers Super_L+F3; sleep 0.1; "
+            "xdotool key --clearmodifiers Super_L+3'"),
+    WK_LEAF('4', "δ",
+            "sh -c 'xdotool key --clearmodifiers Super_L+F3; sleep 0.1; "
+            "xdotool key --clearmodifiers Super_L+4'"),
+    WK_LEAF('5', "ε",
+            "sh -c 'xdotool key --clearmodifiers Super_L+F3; sleep 0.1; "
+            "xdotool key --clearmodifiers Super_L+5'"),
+    WK_LEAF('6', "ζ",
+            "sh -c 'xdotool key --clearmodifiers Super_L+F3; sleep 0.1; "
+            "xdotool key --clearmodifiers Super_L+6'"),
+};
+
+static WhichKey wk_workspace[] = {
+    WK_PREFIX('1', "study", wk_workspace_ns1),
+    WK_PREFIX('2', "code", wk_workspace_ns2),
+    WK_PREFIX('3', "free", wk_workspace_ns3),
+};
+
+/* ── rest of your menus, only mod is adding workspace under Open ─────────── */
 static WhichKey wk_nvim[] = {
     WK_LEAF(XK_Return, "nvim", "st -e nvim"),
     WK_LEAF('n', "quicknotes",
@@ -67,14 +126,19 @@ static WhichKey wk_games[] = {
     WK_LEAF('r', "ROMs", "st -e rom"),
 };
 
-static WhichKey wk_open[] = {
-    WK_PREFIX('v', "nvim+", wk_nvim),
+static WhichKey wk_apps[] = {
     WK_LEAF('f', "firefox", "firefox"),
     WK_LEAF('F', "files", "pcmanfm"),
+    WK_LEAF('l', "logseq", "$HOME/.local/bin/logseq.AppImage"),
+};
+
+static WhichKey wk_open[] = {
+    WK_PREFIX('v', "nvim+", wk_nvim),
     WK_LEAF('t', "terminal", "tabbed -r 2 st -w ''"),
     WK_LEAF('m', "music", "$HOME/.local/bin/menu/music/musicmenu"),
     WK_PREFIX('g', "games+", wk_games),
-};
+    WK_PREFIX('w', "workspace+", wk_workspace), /* ← new */
+    WK_PREFIX('a', "apps+", wk_apps)};
 
 static WhichKey wk_power[] = {
     WK_LEAF('l', "lock", "slock"),
@@ -90,7 +154,7 @@ static WhichKey wk_settings[] = {
     WK_LEAF('m', "muhhwm", "st -e nvim $HOME/.local/src/muhhwm/"),
     WK_LEAF('w', "wi-fi", "connectmenu --wifi"),
     WK_LEAF('b', "bluetooth", "connectmenu --bluetooth"),
-    WK_LEAF('W', "live wallp", "muhhweatherwall &"), // or your launch script
+    WK_LEAF('W', "live wallp", "muhhweatherwall &"),
 };
 
 static WhichKey wk_system[] = {
@@ -98,8 +162,10 @@ static WhichKey wk_system[] = {
     WK_PREFIX('s', "settings+", wk_settings),
 };
 
-static WhichKey wk_root[] = {WK_PREFIX('s', "system+", wk_system),
-                             WK_PREFIX('o', "open+", wk_open),
-                             WK_LEAF(XK_space, "panl", "muhhtoggle")};
+static WhichKey wk_root[] = {
+    WK_PREFIX('s', "system+", wk_system),
+    WK_PREFIX('o', "open+", wk_open),
+    WK_LEAF(XK_space, "panl", "muhhtoggle"),
+};
 
 #endif /* WHICHBINDS_H */
