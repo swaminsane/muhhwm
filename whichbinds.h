@@ -129,7 +129,7 @@ static WhichKey wk_games[] = {
 static WhichKey wk_apps[] = {
     WK_LEAF('f', "firefox", "firefox"),
     WK_LEAF('F', "files", "pcmanfm"),
-    WK_LEAF('l', "logseq", "$HOME/.local/bin/logseq.AppImage"),
+    WK_LEAF('l', "logseq", "st -e /usr/local/bin/logseq.AppImage"),
 };
 
 static WhichKey wk_open[] = {
